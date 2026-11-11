@@ -1,0 +1,1961 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>noncesense</title>
+  <meta name="description" content="A picture drawn once, and never again.">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#d8d1c4">
+  <meta property="og:title" content="noncesense">
+  <meta property="og:description" content="A picture drawn once, and never again.">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/assets/fonts/InstrumentSans.woff2" as="font" type="font/woff2" crossorigin>
+  <style>
+    @font-face {
+      font-family: "Instrument Sans";
+      src: url("/assets/fonts/InstrumentSans.woff2") format("woff2");
+      font-weight: 400 700;
+      font-display: swap;
+    }
+
+    :root {
+      /* replaced per piece from its palette */
+      --wall: #d8d1c4;
+      --mat: #ebe5da;
+      --fg: #2a261f;
+      --muted: rgba(42, 38, 31, .55);
+      --edge: rgba(42, 38, 31, .16);
+      --hover: rgba(42, 38, 31, .07);
+      --veil: rgba(216, 209, 196, .55);
+
+      --font: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      /* print height is about 1.1x its width, plus ~200px for controls and breathing room */
+      --size: min(calc(100vw - 32px), calc((100svh - 210px) / 1.1), 620px);
+      --ease: cubic-bezier(.65, 0, .35, 1);   /* in-out, for colour changes */
+      --out: cubic-bezier(.22, 1, .36, 1);    /* soft landing, for movement */
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+    html { scrollbar-width: none; }
+    html::-webkit-scrollbar { display: none; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100svh;
+      display: flex;
+      flex-direction: column;
+      background: var(--wall);
+      color: var(--fg);
+      font: 15px/1.5 var(--font);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    /* the print: artwork on a mat, notes pencilled underneath; tap to turn it over */
+    @property --flip { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+    @property --sweep { syntax: "<percentage>"; inherits: true; initial-value: -40%; }
+    @property --glare { syntax: "<number>"; inherits: true; initial-value: 0; }
+    /* a band of light crossing the surface as it turns, in the direction of the turn */
+    @keyframes glint-r {
+      0%   { --sweep: -40%; --glare: 0; }
+      35%  { --glare: 1; }
+      70%  { --glare: 1; }
+      100% { --sweep: 140%; --glare: 0; }
+    }
+    @keyframes glint-l {
+      0%   { --sweep: 140%; --glare: 0; }
+      35%  { --glare: 1; }
+      70%  { --glare: 1; }
+      100% { --sweep: -40%; --glare: 0; }
+    }
+    .print {
+      --rx: 0deg; --ry: 0deg; --gx: 50%; --gy: 50%; --glow: 0; --flip: 0deg;
+      position: relative;
+      cursor: pointer;
+      transform-style: preserve-3d;
+      -webkit-tap-highlight-color: transparent;
+      /* quick to respond, turns a few degrees past flat, then settles back */
+      transition: --flip 1.05s cubic-bezier(.3, .1, .22, 1.2);
+      margin: 0;
+      width: var(--size);
+      padding: calc(var(--size) * .045) calc(var(--size) * .045) 0;
+      background: var(--mat);
+      color: var(--fg);
+      box-shadow:
+        0 1px 1px rgba(0, 0, 0, .05),
+        0 6px 14px -6px rgba(0, 0, 0, .12),
+        0 36px 70px -34px rgba(0, 0, 0, .35);
+    }
+    .print.glint-r { animation: glint-r 1s cubic-bezier(.3, .1, .3, 1); }
+    .print.glint-l { animation: glint-l 1s cubic-bezier(.3, .1, .3, 1); }
+    /* soft light that follows the cursor across the paper */
+    .print.lit, .print.turning { transform: perspective(1000px) rotateX(var(--rx)) rotateY(calc(var(--ry) + var(--flip))); }
+    .print:focus-visible { outline: 1px solid var(--fg); outline-offset: 6px; }
+    .face { position: relative; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+    .face::after, .back::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: var(--glare);
+      background: linear-gradient(105deg, transparent calc(var(--sweep) - 22%), rgba(255, 255, 255, .24) var(--sweep), transparent calc(var(--sweep) + 22%));
+    }
+    /* the back is mirrored, so its band runs the other way to keep the light moving one direction on screen */
+    .back::after { background: linear-gradient(255deg, transparent calc(100% - var(--sweep) - 22%), rgba(255, 255, 255, .24) calc(100% - var(--sweep)), transparent calc(100% - var(--sweep) + 22%)); }
+
+    /* the back of the print: one group, centred, with an even rhythm */
+    .back {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: calc(var(--size) * .1);
+      background: var(--mat);
+      color: var(--fg);
+      transform: rotateY(180deg);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .back h3 { margin: 0 0 14px; font-size: 22px; font-weight: 500; letter-spacing: -.015em; }
+    .swatches { display: flex; gap: 6px; margin-bottom: 36px; }
+    .swatches i { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+    .facts {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px 24px;
+      margin: 0 0 36px;
+      font-size: 13px;
+    }
+    .facts dt { color: var(--muted); }
+    .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .fine { margin: 0; font-size: 11.5px; color: var(--muted); }
+    .print::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at var(--gx) var(--gy), rgba(255, 255, 255, .06), transparent 45%);
+      opacity: var(--glow);
+      display: none;
+    }
+    .print.lit::after { display: block; }
+    .stack { position: relative; aspect-ratio: 1; }
+    .stack canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      transition: opacity 1.8s var(--ease);
+    }
+    .stack canvas.top { z-index: 1; }
+    .stack canvas.on { opacity: 1; }
+
+    .notes {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: calc(var(--size) * .03) 0 calc(var(--size) * .034);
+    }
+    .about { min-width: 0; transition: opacity .9s var(--ease); }
+    .about.fade { opacity: 0; }
+    .title { display: block; font-size: 14px; font-weight: 430; letter-spacing: .01em; opacity: .85; }
+    .nonce { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); letter-spacing: .05em; font-variant-numeric: tabular-nums; }
+
+    /* letters arrive one by one, coming into focus */
+    .word { white-space: nowrap; }
+    .ch { display: inline-block; white-space: pre; animation: arrive 1.6s var(--out) backwards; animation-delay: calc(var(--d) * 1ms); }
+    @keyframes arrive {
+      from { opacity: 0; filter: blur(4px); transform: translateY(3px); }
+      to   { opacity: 1; filter: blur(0); transform: none; }
+    }
+
+    .info {
+      flex: none;
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+      border-radius: 50%;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color .6s var(--out), transform .6s var(--out);
+    }
+    .info svg { width: 17px; height: 17px; }
+    @media (hover: hover) { .info:hover { color: var(--fg); background: var(--hover); transform: scale(1.06); } }
+    .info:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
+
+    /* controls */
+    .controls { display: flex; gap: 14px; margin-top: 30px; color: var(--fg); }
+    .icon-btn {
+      width: 50px;
+      height: 50px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      color: var(--fg);
+      background: transparent;
+      border: 1px solid var(--edge);
+      border-radius: 50%;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition:
+        background-color .6s var(--out),
+        border-color .6s var(--out),
+        transform .5s var(--out);
+    }
+    .icon-btn svg { width: 19px; height: 19px; transition: transform .9s var(--out); }
+    .icon-btn:focus-visible { outline: 1px solid var(--fg); outline-offset: 4px; }
+    .icon-btn:active { transform: scale(.95); transition-duration: .15s; }
+    @media (hover: hover) {
+      .icon-btn:hover { background: var(--hover); border-color: var(--muted); transform: translateY(-2px); }
+      #again:hover svg { transform: rotate(-180deg); }
+      #keep:hover svg { transform: translateY(2px); }
+    }
+
+    /* about: floats over the page. The blurred backdrop lives on ::before so it can
+       fade on its own while the card dissolves. */
+    .sheet {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      visibility: hidden;
+      cursor: pointer;
+      transition: visibility 0s linear 1s;
+    }
+    .sheet::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: var(--veil);
+      -webkit-backdrop-filter: blur(16px) saturate(1.1);
+      backdrop-filter: blur(16px) saturate(1.1);
+      opacity: 0;
+      transition: opacity 1s var(--ease);
+    }
+    .sheet.open, .sheet.leaving { visibility: visible; transition: visibility 0s; }
+    .sheet.open::before { opacity: 1; transition-duration: .8s; }
+    .card {
+      position: relative;
+      width: min(100%, 380px);
+      padding: 30px 28px 26px;
+      background: var(--mat);
+      color: var(--fg);
+      border-radius: 20px;
+      box-shadow:
+        0 1px 1px rgba(0, 0, 0, .05),
+        0 40px 90px -40px rgba(0, 0, 0, .5);
+      opacity: 0;
+      transform: translateY(16px) scale(.97);
+      filter: blur(6px);
+      transition: transform 1s var(--out), opacity .7s var(--ease), filter .8s var(--ease);
+    }
+    .card:focus { outline: none; }
+    .sheet.open .card { opacity: 1; transform: none; filter: blur(0); transition-delay: .05s; }
+    /* dissolving: the card is swapped for a canvas copy that comes apart */
+    .sheet.leaving .card { visibility: hidden; opacity: 1; transform: none; filter: none; transition: none; }
+    /* after the dust has gone: stay hidden until opened again, with nothing left to replay */
+    .sheet.gone, .sheet.gone .card { visibility: hidden; transition: none; }
+    .card h2 { margin: 0 0 12px; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+    .card p { margin: 0 0 10px; color: var(--muted); font-size: 15px; line-height: 1.6; }
+    .card p:last-child { margin: 0; }
+
+    .dust { position: fixed; inset: 0; z-index: 20; pointer-events: none; width: 100%; height: 100%; }
+
+    @media (max-width: 560px) {
+      :root { --size: calc(100vw - 32px); }
+      .card { padding: 26px 22px 24px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      body, .print, .stack canvas, .about, .icon-btn, .icon-btn svg, .info, .sheet, .card { transition: none; }
+      .print.glint-r, .print.glint-l { animation: none; }
+      .ch { animation: none; opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <figure class="print" id="print" tabindex="0" role="button" aria-label="Turn the print over" aria-pressed="false">
+      <div class="face">
+      <div class="stack">
+        <canvas width="1400" height="1400" role="img"></canvas>
+        <canvas width="1400" height="1400" role="img"></canvas>
+      </div>
+      <figcaption class="notes">
+        <div class="about" id="about">
+          <span class="title" id="title">&nbsp;</span>
+          <span class="nonce" id="nonce">&nbsp;</span>
+        </div>
+        <button type="button" class="info" id="info" aria-label="About" aria-haspopup="dialog" aria-controls="sheet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r=".7" fill="currentColor"/>
+          </svg>
+        </button>
+      </figcaption>
+      </div>
+      <div class="back" aria-hidden="true">
+        <h3 id="b-title"></h3>
+        <div class="swatches" id="b-swatches"></div>
+        <dl class="facts">
+          <dt>Drawn</dt><dd id="b-drawn"></dd>
+          <dt>Style</dt><dd id="b-style"></dd>
+          <dt>Marks</dt><dd id="b-marks"></dd>
+          <dt>Nonce</dt><dd id="b-nonce"></dd>
+        </dl>
+        <p class="fine">One of 2<sup>128</sup> possible pictures.</p>
+      </div>
+    </figure>
+
+    <div class="controls">
+      <button type="button" class="icon-btn" id="again" aria-label="Let it go">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4.5h-4.5"/>
+        </svg>
+      </button>
+      <button type="button" class="icon-btn" id="keep" aria-label="Keep it">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/>
+        </svg>
+      </button>
+    </div>
+  </main>
+
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true">
+    <div class="card" id="card" tabindex="-1">
+      <h2 id="sheet-title">noncesense</h2>
+      <p>Every picture here grows from one random number, a nonce: a number used once.</p>
+      <p>No number comes up twice, so no picture does either. Let one go and it is gone for good. Keep the ones you love.</p>
+    </div>
+  </div>
+  <canvas class="dust" id="dust" aria-hidden="true"></canvas>
+
+  <script>
+  (function () {
+    "use strict";
+
+    var W = 1400, H = 1400, MARGIN = W * 0.07;
+    var root = document.documentElement;
+    var canvases = document.querySelectorAll(".stack canvas");
+    var aboutEl = document.getElementById("about");
+    var titleEl = document.getElementById("title");
+    var nonceEl = document.getElementById("nonce");
+    var themeMeta = document.querySelector('meta[name="theme-color"]');
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // ---------- randomness ----------
+
+    function freshSeed() {
+      var u = new Uint32Array(4);
+      crypto.getRandomValues(u);
+      return u;
+    }
+
+    function toHex(u) {
+      var s = "";
+      for (var i = 0; i < u.length; i++) s += ("00000000" + u[i].toString(16)).slice(-8);
+      return s;
+    }
+
+    // sfc32: small, fast, seedable
+    function rngFrom(u) {
+      var a = u[0], b = u[1], c = u[2], d = u[3];
+      function next() {
+        a |= 0; b |= 0; c |= 0; d |= 0;
+        var t = (a + b | 0) + d | 0;
+        d = d + 1 | 0;
+        a = b ^ b >>> 9;
+        b = c + (c << 3) | 0;
+        c = (c << 21 | c >>> 11);
+        c = c + t | 0;
+        return (t >>> 0) / 4294967296;
+      }
+      for (var i = 0; i < 12; i++) next();
+      return next;
+    }
+
+    function gauss(rng) {
+      var u = 1 - rng(), v = rng();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
+
+    function noise2(rng) {
+      var p = new Uint8Array(512), v = new Float32Array(256), i;
+      for (i = 0; i < 256; i++) { p[i] = i; v[i] = rng(); }
+      for (i = 255; i > 0; i--) { var j = rng() * (i + 1) | 0, t = p[i]; p[i] = p[j]; p[j] = t; }
+      for (i = 0; i < 256; i++) p[i + 256] = p[i];
+      return function (x, y) {
+        var xi = Math.floor(x), yi = Math.floor(y);
+        var xf = x - xi, yf = y - yi;
+        var u = xf * xf * (3 - 2 * xf), w = yf * yf * (3 - 2 * yf);
+        var X = xi & 255, Y = yi & 255;
+        var a = v[p[p[X] + Y]], b = v[p[p[X + 1] + Y]];
+        var c = v[p[p[X] + Y + 1]], d = v[p[p[X + 1] + Y + 1]];
+        var top = a + (b - a) * u;
+        return top + ((c + (d - c) * u) - top) * w;
+      };
+    }
+
+    function pick(rng, arr) { return arr[rng() * arr.length | 0]; }
+
+    function pickWeighted(rng, items) {
+      var total = 0, i;
+      for (i = 0; i < items.length; i++) total += items[i][1];
+      var r = rng() * total;
+      for (i = 0; i < items.length; i++) { r -= items[i][1]; if (r <= 0) return items[i][0]; }
+      return items[0][0];
+    }
+
+    // ---------- colour ----------
+
+    function rgb(hex) {
+      var n = parseInt(hex.slice(1), 16);
+      return [n >> 16 & 255, n >> 8 & 255, n & 255];
+    }
+    function mix(a, b, t) {
+      var x = rgb(a), y = rgb(b);
+      return "#" + x.map(function (v, i) {
+        return ("0" + Math.round(v + (y[i] - v) * t).toString(16)).slice(-2);
+      }).join("");
+    }
+    function alpha(hex, a) { var c = rgb(hex); return "rgba(" + c.join(",") + "," + a + ")"; }
+
+    // OKLab: mixing here follows how we see colour, so a change from
+    // warm stone to navy passes through clean tones, not grey mud
+    function toLab(hex) {
+      var c = rgb(hex).map(function (v) {
+        v /= 255;
+        return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      var l = Math.cbrt(0.4122214708 * c[0] + 0.5363325363 * c[1] + 0.0514459929 * c[2]);
+      var m = Math.cbrt(0.2119034982 * c[0] + 0.6806995451 * c[1] + 0.1073969566 * c[2]);
+      var s = Math.cbrt(0.0883024619 * c[0] + 0.2817188376 * c[1] + 0.6299787005 * c[2]);
+      return [
+        0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+        1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+        0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+      ];
+    }
+    function fromLab(lab) {
+      var l = Math.pow(lab[0] + 0.3963377774 * lab[1] + 0.2158037573 * lab[2], 3);
+      var m = Math.pow(lab[0] - 0.1055613458 * lab[1] - 0.0638541728 * lab[2], 3);
+      var s = Math.pow(lab[0] - 0.0894841775 * lab[1] - 1.2914855480 * lab[2], 3);
+      var c = [
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+      ];
+      return "#" + c.map(function (v) {
+        v = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+        return ("0" + Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16)).slice(-2);
+      }).join("");
+    }
+
+    // the room takes its colour from the piece hanging in it
+    function roomFor(pal) {
+      if (pal.dark) return { wall: mix(pal.bg, "#000000", 0.25), mat: mix(pal.bg, "#ffffff", 0.07), fg: pal.ink[0] };
+      return {
+        wall: mix(mix(pal.bg, pal.ink[0], 0.13), "#808080", 0.08),
+        mat: mix(pal.bg, pal.ink[0], 0.035),
+        fg: mix(pal.ink[0], "#000000", 0.15)
+      };
+    }
+
+    function paintRoom(room) {
+      root.style.setProperty("--wall", room.wall);
+      root.style.setProperty("--mat", room.mat);
+      root.style.setProperty("--fg", room.fg);
+      root.style.setProperty("--muted", alpha(room.fg, 0.55));
+      root.style.setProperty("--edge", alpha(room.fg, 0.18));
+      root.style.setProperty("--hover", alpha(room.fg, 0.07));
+      root.style.setProperty("--veil", alpha(room.wall, 0.55));
+    }
+
+    function mixRoom(a, b, e) {
+      var out = {};
+      ["wall", "mat", "fg"].forEach(function (k) {
+        var x = toLab(a[k]), y = toLab(b[k]);
+        out[k] = fromLab(x.map(function (v, i) { return v + (y[i] - v) * e; }));
+      });
+      return out;
+    }
+
+    // Every colour on the page moves together: one clock, one curve, blended in OKLab.
+    var ROOM_MS = 2000, roomNow = null, roomJob = 0;
+
+    function dress(pal) {
+      var to = roomFor(pal), my = ++roomJob;
+      root.style.colorScheme = pal.dark ? "dark" : "light";
+      themeMeta.setAttribute("content", to.wall);
+      if (!roomNow || reduce) { roomNow = to; paintRoom(to); return; }
+
+      var from = roomNow, start = performance.now();
+      (function step(now) {
+        if (my !== roomJob) return;
+        var t = Math.min(1, (now - start) / ROOM_MS);
+        roomNow = t < 1 ? mixRoom(from, to, ease(t)) : to;
+        paintRoom(roomNow);
+        if (t < 1) requestAnimationFrame(step);
+      })(start);
+    }
+
+    // ---------- taste ----------
+
+    var palettes = [
+      { bg: "#f1ebe0", ink: ["#1f2a44", "#c8553d", "#e0a458", "#588b8b"] },
+      { bg: "#efe8dc", ink: ["#2b2b2b", "#b33f40", "#d9a441"] },
+      { bg: "#eae6dd", ink: ["#30475e", "#7f9c96", "#f2a65a"] },
+      { bg: "#f4efe7", ink: ["#264653", "#2a9d8f", "#e9c46a", "#e76f51"] },
+      { bg: "#e9ece6", ink: ["#1b3a2f", "#6b8f71", "#c9a227"] },
+      { bg: "#f3ece8", ink: ["#3d2c4e", "#c06c84", "#f8b195", "#6c5b7b"] },
+      { bg: "#ece6da", ink: ["#0f4c5c", "#e36414", "#9a031e", "#fb8b24"] },
+      { bg: "#f2efe9", ink: ["#151515", "#5a5a5a", "#d62828"] },
+      { bg: "#14213d", ink: ["#ece6d6", "#fca311", "#8ecae6"], dark: true },
+      { bg: "#1b1e20", ink: ["#e8dcc4", "#c97b63", "#7aa095"], dark: true }
+    ];
+
+    var adjectives = ["Quiet", "Salted", "Borrowed", "Unrepeatable", "Slow", "Folded", "Distant", "Brief",
+      "Untold", "Sleepless", "Loose", "Private", "Careful", "Wandering", "Idle", "Late", "Small", "Unsent",
+      "Hidden", "Last", "Soft", "Stray", "Uncounted", "Single"];
+    var nouns = ["Weather", "Static", "Tide", "Orchard", "Signal", "Harbour", "Ledger", "Garden", "Frequency",
+      "Murmur", "Current", "Hush", "River", "Thread", "Field", "Echo", "Drift", "Letter", "Season", "Weave",
+      "Migration", "Window", "Ember", "Shoreline"];
+
+    // ---------- pieces ----------
+    // Each piece builds its geometry up front, then render(ctx, p) draws
+    // everything up to progress p (0..1). Calls are incremental.
+
+    function inkPicker(rng, pal) {
+      var items = pal.ink.map(function (c, i) { return [i, i === 0 ? 2.2 : 0.6 + rng()]; });
+      return function () { return pickWeighted(rng, items); };
+    }
+
+    function marginClip(ctx) {
+      ctx.beginPath();
+      ctx.rect(MARGIN, MARGIN, W - MARGIN * 2, H - MARGIN * 2);
+      ctx.clip();
+    }
+
+    function flowPiece(rng, n, pal, dots) {
+      var ink = inkPicker(rng, pal);
+      var comp = pickWeighted(rng, [["full", 3], ["circle", 1.2], ["arch", 1.2]]);
+      var scale = 0.0009 + rng() * 0.0026;
+      var turns = 0.6 + rng() * 2.2;
+      var rot = rng() * Math.PI * 2;
+      var count = dots ? 1500 + rng() * 800 | 0 : 2600 + rng() * 1600 | 0;
+      var steps = dots ? 30 + rng() * 40 | 0 : 110 + rng() * 120 | 0;
+      var stepLen = dots ? 11 + rng() * 5 : 3 + rng() * 1.5;
+      var width = dots ? 2.4 + rng() * 2.2 : 1.6 + rng() * 2;
+      var opacity = dots ? 0.85 : 0.5 + rng() * 0.3;
+      var R = W * (0.3 + rng() * 0.08);
+
+      function angle(x, y) {
+        var v = n(x * scale, y * scale) * 0.7 + n(x * scale * 2.3 + 91, y * scale * 2.3 + 17) * 0.3;
+        return v * Math.PI * 2 * turns + rot;
+      }
+
+      // starts on a jittered grid so lines cover the canvas evenly
+      var cols = Math.ceil(Math.sqrt(count)), cell = W / cols;
+      var widths = [0.7, 1, 1.4], alphas = [0.6, 0.8, 1];
+      var groups = {};
+      for (var i = 0; i < cols * cols; i++) {
+        var x = (i % cols + rng()) * cell, y = ((i / cols | 0) + rng()) * cell;
+        var len = steps * (0.5 + 0.5 * rng()) | 0;
+        var pts = new Float32Array((len + 1) * 2);
+        pts[0] = x; pts[1] = y;
+        for (var s = 1; s <= len; s++) {
+          var a = angle(x, y);
+          x += Math.cos(a) * stepLen; y += Math.sin(a) * stepLen;
+          pts[s * 2] = x; pts[s * 2 + 1] = y;
+        }
+        var c = ink(), wi = rng() * 3 | 0, ai = rng() * 3 | 0;
+        var key = c + "-" + wi + "-" + ai;
+        (groups[key] || (groups[key] = { color: pal.ink[c], width: width * widths[wi], alpha: opacity * alphas[ai], paths: [] })).paths.push(pts);
+      }
+      groups = Object.keys(groups).map(function (k) { return groups[k]; });
+
+      function clip(ctx) {
+        ctx.beginPath();
+        if (comp === "circle") ctx.arc(W / 2, H / 2, R, 0, Math.PI * 2);
+        else if (comp === "arch") {
+          var aw = W * 0.56, top = H * 0.16, bottom = H - MARGIN * 1.6;
+          ctx.moveTo(W / 2 - aw / 2, bottom);
+          ctx.lineTo(W / 2 - aw / 2, top + aw / 2);
+          ctx.arc(W / 2, top + aw / 2, aw / 2, Math.PI, 0);
+          ctx.lineTo(W / 2 + aw / 2, bottom);
+          ctx.closePath();
+        } else ctx.rect(MARGIN, MARGIN, W - MARGIN * 2, H - MARGIN * 2);
+        ctx.clip();
+      }
+
+      var drawn = 0;
+      return {
+        marks: (cols * cols).toLocaleString() + (dots ? " trails" : " lines"),
+        duration: 3000,
+        render: function (ctx, p) {
+          var target = Math.round(p * steps);
+          if (target <= drawn) return;
+          ctx.save();
+          clip(ctx);
+          ctx.lineCap = "butt";
+          ctx.lineJoin = "round";
+          for (var g = 0; g < groups.length; g++) {
+            var grp = groups[g];
+            ctx.globalAlpha = grp.alpha;
+            ctx.strokeStyle = ctx.fillStyle = grp.color;
+            ctx.lineWidth = grp.width;
+            ctx.beginPath();
+            for (var k = 0; k < grp.paths.length; k++) {
+              var pts = grp.paths[k], last = pts.length / 2 - 1;
+              var from = drawn, to = Math.min(target, last);
+              if (to <= from) continue;
+              if (dots) {
+                for (var s = from + 1; s <= to; s++) {
+                  ctx.moveTo(pts[s * 2] + grp.width, pts[s * 2 + 1]);
+                  ctx.arc(pts[s * 2], pts[s * 2 + 1], grp.width, 0, Math.PI * 2);
+                }
+              } else {
+                ctx.moveTo(pts[from * 2], pts[from * 2 + 1]);
+                for (var t = from + 1; t <= to; t++) ctx.lineTo(pts[t * 2], pts[t * 2 + 1]);
+              }
+            }
+            if (dots) ctx.fill(); else ctx.stroke();
+          }
+          ctx.restore();
+          drawn = target;
+        }
+      };
+    }
+
+    function ringsPiece(rng, n, pal) {
+      var ink = inkPicker(rng, pal);
+      var cx = W * (0.5 + (rng() - 0.5) * 0.35), cy = H * (0.5 + (rng() - 0.5) * 0.35);
+      var count = 30 + rng() * 30 | 0;
+      var rMax = W * (0.5 + rng() * 0.25);
+      var scale = 0.0015 + rng() * 0.002;
+      var amp = W * (0.025 + rng() * 0.05);
+      var width = 2 + rng() * 2.5;
+      var rings = [];
+      for (var i = 1; i <= count; i++) {
+        var r = rMax * Math.pow(i / count, 0.85);
+        var samples = 260, pts = new Float32Array(samples * 2);
+        for (var k = 0; k < samples; k++) {
+          var a = k / samples * Math.PI * 2;
+          var bx = cx + Math.cos(a) * r, by = cy + Math.sin(a) * r;
+          var d = (n(bx * scale, by * scale) - 0.5) * 2 * amp * (0.25 + r / rMax);
+          pts[k * 2] = cx + Math.cos(a) * (r + d);
+          pts[k * 2 + 1] = cy + Math.sin(a) * (r + d);
+        }
+        rings.push({ pts: pts, color: pal.ink[ink()], width: width * (0.6 + rng() * 0.8) });
+      }
+      var drawn = 0;
+      return {
+        marks: count + " rings",
+        duration: 2600,
+        render: function (ctx, p) {
+          var target = Math.round(p * count);
+          if (target <= drawn) return;
+          ctx.save();
+          marginClip(ctx);
+          ctx.lineJoin = "round";
+          ctx.globalAlpha = 0.9;
+          for (var i = drawn; i < target; i++) {
+            var ring = rings[i], pts = ring.pts;
+            ctx.strokeStyle = ring.color;
+            ctx.lineWidth = ring.width;
+            ctx.beginPath();
+            ctx.moveTo(pts[0], pts[1]);
+            for (var k = 2; k < pts.length; k += 2) ctx.lineTo(pts[k], pts[k + 1]);
+            ctx.closePath();
+            ctx.stroke();
+          }
+          ctx.restore();
+          drawn = target;
+        }
+      };
+    }
+
+    function watercolourPiece(rng, n, pal) {
+      function deform(poly, depth, variance) {
+        for (var d = 0; d < depth; d++) {
+          var next = [];
+          for (var i = 0; i < poly.length; i++) {
+            var a = poly[i], b = poly[(i + 1) % poly.length];
+            var v = variance * a[2];
+            next.push(a);
+            next.push([(a[0] + b[0]) / 2 + gauss(rng) * v, (a[1] + b[1]) / 2 + gauss(rng) * v, (a[2] + b[2]) / 2 * (0.7 + rng() * 0.6)]);
+          }
+          poly = next;
+          variance *= 0.55;
+        }
+        return poly;
+      }
+
+      // the first ink is usually near-black on light paper; it turns washes muddy
+      var inks = pal.dark ? pal.ink.slice() : pal.ink.slice(1);
+      var order = inks.sort(function () { return rng() - 0.5; });
+      var blobCount = 3 + rng() * 2 | 0;
+      var blobs = [];
+      for (var b = 0; b < blobCount; b++) {
+        var r = W * (0.13 + rng() * 0.09);
+        // keep the whole bleed inside the paper so nothing gets cut off by the margin
+        var pad = MARGIN + r * 1.35;
+        var cx = pad + rng() * (W - 2 * pad);
+        var cy = pad + rng() * (H - 2 * pad);
+        var base = [];
+        for (var k = 0; k < 10; k++) {
+          var a = k / 10 * Math.PI * 2;
+          base.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0.6 + rng() * 0.8]);
+        }
+        blobs.push({ base: deform(base, 3, r * 0.22), color: order[b % order.length], r: r });
+      }
+
+      var layers = 56, total = layers * blobs.length;
+      var mode = pal.dark ? "screen" : "source-over";
+      var drawn = 0;
+      return {
+        marks: total + " layers of wash",
+        duration: 3200,
+        render: function (ctx, p) {
+          var target = Math.round(p * total);
+          if (target <= drawn) return;
+          ctx.save();
+          marginClip(ctx);
+          ctx.globalCompositeOperation = mode;
+          for (var i = drawn; i < target; i++) {
+            var blob = blobs[i % blobs.length];
+            var poly = deform(blob.base, 4, blob.r * 0.09);
+            ctx.globalAlpha = pal.dark ? 0.03 : 0.04;
+            ctx.fillStyle = blob.color;
+            ctx.beginPath();
+            ctx.moveTo(poly[0][0], poly[0][1]);
+            for (var k = 1; k < poly.length; k++) ctx.lineTo(poly[k][0], poly[k][1]);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+          drawn = target;
+        }
+      };
+    }
+
+    // ---------- scenes: recognisable subjects, still grown from one number ----------
+    // Scenes redraw the whole picture each frame (they are cheap), so things can rise,
+    // grow and fly in smoothly. p is progress from 0 to 1.
+
+    function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+    function smooth(v) { v = clamp01(v); return v * v * (3 - 2 * v); }
+
+    function skyFill(ctx, pal, accent) {
+      var g = ctx.createLinearGradient(0, MARGIN, 0, H - MARGIN);
+      g.addColorStop(0, pal.bg);
+      g.addColorStop(1, mix(pal.bg, accent, pal.dark ? 0.32 : 0.26));
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // the paper's grain, laid over a scene each frame so it reads as printed
+    function grainLayer(rng, pal) {
+      var c = document.createElement("canvas");
+      c.width = W; c.height = H;
+      var g = c.getContext("2d");
+      g.fillStyle = pal.dark ? "#ffffff" : "#3a2f20";
+      for (var i = 0; i < 14000; i++) {
+        g.globalAlpha = 0.015 + rng() * 0.035;
+        g.fillRect(rng() * W, rng() * H, 1.3, 1.3);
+      }
+      return c;
+    }
+
+    // a bird seen from below: two curved wings meeting at the body
+    function birdPath(ctx, x, y, s, lift) {
+      var h = s * (0.15 + 0.4 * lift);
+      ctx.moveTo(x - s, y - h);
+      ctx.quadraticCurveTo(x - s * 0.35, y - h * 0.15, x, y);
+      ctx.quadraticCurveTo(x + s * 0.35, y - h * 0.15, x + s, y - h);
+    }
+
+    function accentOf(rng, pal) { return pal.ink[1 + (rng() * (pal.ink.length - 1) | 0)]; }
+
+    // ---------- the scene composer ----------
+    // A scene = a landscape + a time of day + sky/weather + one or two subjects.
+    // Every part is shaped by the same random number, so no two scenes repeat.
+    // Scenes redraw fully each frame (cheap flat shapes); each layer has its own
+    // window of the progress so things rise, grow and arrive one after another.
+
+    // a ridge or horizon line sampled across the canvas, with a lookup for y at any x
+    function ridge(n, seed, base, amp, freq, sharp) {
+      var pts = [];
+      for (var x = -8; x <= W + 8; x += 8) {
+        var v = n(x * freq + seed, seed * 0.37) * 0.65 + n(x * freq * 2.7 + seed, seed * 0.11 + 40) * 0.35;
+        var peak = 1 - Math.abs(2 * v - 1);
+        v = v * (1 - sharp) + peak * sharp;
+        pts.push(x, base - amp * v);
+      }
+      return { pts: pts, y: function (x) { var i = Math.max(0, Math.min(pts.length / 2 - 1, Math.round((x + 8) / 8))); return pts[i * 2 + 1]; } };
+    }
+
+    function fillBelow(ctx, pts, dy) {
+      ctx.beginPath();
+      ctx.moveTo(-10, H + 10);
+      for (var k = 0; k < pts.length; k += 2) ctx.lineTo(pts[k], pts[k + 1] + (dy || 0));
+      ctx.lineTo(W + 10, H + 10);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function circle(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); ctx.fill(); }
+
+    function scenePiece(rng, n, pal) {
+      var dark = !!pal.dark;
+      var accent = accentOf(rng, pal), ink = pal.ink[0];
+      var time = dark ? pickWeighted(rng, [["night", 3], ["dusk", 1]]) : pickWeighted(rng, [["day", 3], ["dusk", 2]]);
+      var night = time === "night";
+
+      // the colours of the place, from the palette
+      var C = {
+        skyLow: mix(pal.bg, accent, time === "dusk" ? 0.42 : dark ? 0.3 : 0.2),
+        far: dark ? mix(pal.bg, ink, 0.22) : mix(pal.bg, ink, 0.16),
+        near: dark ? mix(pal.bg, "#000000", 0.45) : ink,
+        light: dark ? mix(pal.bg, "#ffffff", 0.75) : mix(pal.bg, accent, 0.6),
+        glow: "#f6cf74",
+        paper: pal.bg
+      };
+      C.mid = function (k) { return mix(C.far, C.near, Math.pow(k, 1.3)); };
+      C.water = mix(pal.bg, ink, dark ? 0.12 : 0.24);
+      C.waterLow = mix(pal.bg, ink, dark ? 0.26 : 0.42);
+
+      var layers = [];                           // { from, to, draw(ctx, t) }
+      function layer(from, to, draw) { layers.push({ from: from, to: to, draw: draw }); }
+      var parts = [];                            // words for the back of the print
+
+      // ---------- sky ----------
+      var sunR = W * (0.045 + rng() * 0.04);
+      var orb = { x: MARGIN + (0.15 + rng() * 0.7) * (W - 2 * MARGIN), y: H * (0.18 + rng() * 0.16), r: sunR };
+      layer(0, 0.01, function (ctx) {
+        var g = ctx.createLinearGradient(0, MARGIN, 0, H - MARGIN);
+        g.addColorStop(0, pal.bg);
+        g.addColorStop(1, C.skyLow);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+      });
+
+      // ---------- landscape ----------
+      var landName = pick(rng, ["mountains", "hills", "lake", "sea", "island", "cliffs", "dunes", "forest", "fields", "city"]);
+      var L = { water: false, ground: null, horizon: H * 0.6, shore: null };
+      var seed = rng() * 300;
+
+      function ranges(count, top, bottom, ampTop, ampBottom, f0, f1, sharpTop, from, to) {
+        var out = [];
+        for (var i = 0; i < count; i++) {
+          var k = count === 1 ? 1 : i / (count - 1);
+          out.push({ r: ridge(n, seed + i * 31, top + (bottom - top) * k, ampTop + (ampBottom - ampTop) * k, f0 + (f1 - f0) * k, sharpTop * (1 - k)), k: k });
+        }
+        out.forEach(function (o, i) {
+          var a = from + (to - from) * (i / count), b = a + (to - from) / count * 1.6;
+          layer(a, b, function (ctx, t) { ctx.globalAlpha = t; ctx.fillStyle = C.mid(o.k); fillBelow(ctx, o.r.pts, (1 - t) * 40); });
+        });
+        return out;
+      }
+
+      function waterBody(horizon, from) {
+        L.water = true;
+        L.horizon = horizon;
+        layer(from, from + 0.15, function (ctx, t) {
+          ctx.globalAlpha = t;
+          var g = ctx.createLinearGradient(0, horizon, 0, H);
+          g.addColorStop(0, C.water);
+          g.addColorStop(1, C.waterLow);
+          ctx.fillStyle = g;
+          ctx.fillRect(0, horizon, W, H - horizon);
+          // a few long ripples
+          ctx.strokeStyle = mix(C.waterLow, C.near, 0.3);
+          ctx.lineWidth = 1.4;
+          ctx.globalAlpha = 0.35 * t;
+          ctx.beginPath();
+          for (var w = 0; w < 18; w++) {
+            var wy = horizon + Math.pow((w + 1) / 19, 1.6) * (H - horizon);
+            var x0 = (n(w * 3.1, seed) * 0.6) * W, len = W * (0.15 + n(w, seed + 7) * 0.4);
+            ctx.moveTo(x0, wy);
+            ctx.lineTo(x0 + len, wy + (n(w, 2) - 0.5) * 3);
+          }
+          ctx.stroke();
+        });
+      }
+
+      if (landName === "mountains") {
+        var rs = ranges(4 + (rng() * 2 | 0), H * 0.5, H * 0.86, H * 0.22, H * 0.06, 0.0012, 0.003, 0.6, 0.08, 0.5);
+        L.ground = rs[rs.length - 1].r;
+        parts.push("mountains");
+      } else if (landName === "hills") {
+        var hs = ranges(3 + (rng() * 2 | 0), H * 0.62, H * 0.86, H * 0.08, H * 0.06, 0.0009, 0.0016, 0, 0.08, 0.45);
+        L.ground = hs[hs.length - 1].r;
+        parts.push("hills");
+      } else if (landName === "lake") {
+        var lh = H * (0.6 + rng() * 0.06);
+        var peaks = [];
+        for (var i = 0; i < 3; i++) peaks.push(ridge(n, seed + i * 17, lh - 4 + i * 2, H * (0.2 - i * 0.05), 0.0013 + i * 0.0008, 0.5 - i * 0.15));
+        peaks.forEach(function (r, i) {
+          layer(0.06 + i * 0.1, 0.26 + i * 0.1, function (ctx, t) {
+            ctx.globalAlpha = t; ctx.fillStyle = C.mid(i / 3);
+            ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, lh); ctx.clip();
+            fillBelow(ctx, r.pts, (1 - t) * 30);
+            ctx.restore();
+          });
+        });
+        waterBody(lh, 0.3);
+        // the mountains mirrored in still water
+        layer(0.4, 0.62, function (ctx, t) {
+          ctx.save();
+          ctx.beginPath(); ctx.rect(0, lh, W, H - lh); ctx.clip();
+          ctx.translate(0, lh * 2); ctx.scale(1, -1);
+          peaks.forEach(function (r, i) { ctx.globalAlpha = 0.28 * t; ctx.fillStyle = C.mid(i / 3); fillBelow(ctx, r.pts, 0); });
+          ctx.restore();
+        });
+        parts.push("lake");
+      } else if (landName === "sea" || landName === "island" || landName === "cliffs") {
+        var sh = H * (0.56 + rng() * 0.08);
+        waterBody(sh, 0.08);
+        if (landName === "island") {
+          var ix = W * (0.3 + rng() * 0.4), iw = W * (0.14 + rng() * 0.1), ih = H * (0.05 + rng() * 0.05);
+          L.island = { x: ix, w: iw, top: sh - ih };
+          layer(0.25, 0.45, function (ctx, t) {
+            ctx.globalAlpha = t; ctx.fillStyle = C.near;
+            ctx.beginPath(); ctx.moveTo(ix - iw / 2, sh + 2);
+            ctx.bezierCurveTo(ix - iw / 4, sh - ih * 1.2, ix + iw / 5, sh - ih * 1.25, ix + iw / 2, sh + 2);
+            ctx.closePath(); ctx.fill();
+          });
+          L.ground = { y: function (x) { var d = (x - ix) / (iw / 2); return d * d < 1 ? sh - ih * (1 - d * d) * 0.95 : sh; } };
+          parts.push("island");
+        } else if (landName === "cliffs") {
+          var left = rng() < 0.5, cw = W * (0.3 + rng() * 0.12), ctop = sh - H * (0.1 + rng() * 0.1);
+          var cr = ridge(n, seed + 5, ctop, H * 0.05, 0.005, 0.35);
+          var edge = left ? cw : W - cw, dir = left ? 1 : -1, face = [];
+          // the cliff face: steps down from the top edge to the sea, ragged and leaning outward
+          for (var k = 0; k <= 12; k++) {
+            var f = k / 12, fy = cr.y(edge) + (sh + 6 - cr.y(edge)) * f;
+            face.push(edge + dir * (W * 0.035 * f + (n(k * 0.9, seed + 3) - 0.5) * W * 0.035), fy);
+          }
+          L.cliff = { left: left, w: cw, top: ctop };
+          layer(0.2, 0.45, function (ctx, t) {
+            var dy = (1 - t) * 40;
+            ctx.globalAlpha = t; ctx.fillStyle = C.near;
+            ctx.beginPath();
+            ctx.moveTo(left ? -10 : W + 10, H + 10);
+            for (var x = left ? -8 : W + 8; left ? x <= edge : x >= edge; x += 8 * dir) ctx.lineTo(x, cr.y(x) + dy);
+            for (var k = 0; k < face.length; k += 2) ctx.lineTo(face[k], face[k + 1] + dy);
+            ctx.lineTo(face[face.length - 2], H + 10);
+            ctx.closePath(); ctx.fill();
+          });
+          L.ground = { y: function (x) { return (left ? x < cw : x > W - cw) ? cr.y(x) : sh; } };
+          parts.push("cliffs");
+        } else {
+          L.ground = { y: function () { return sh; } };
+          parts.push("sea");
+        }
+      } else if (landName === "dunes") {
+        var ds = [];
+        for (var d = 0; d < 4; d++) ds.push(ridge(n, seed + d * 13, H * (0.6 + d * 0.08), H * (0.09 - d * 0.012), 0.0011 + d * 0.0004, 0));
+        ds.forEach(function (r, i) {
+          var col = mix(mix(pal.bg, accent, 0.35), C.near, i / 5);
+          layer(0.08 + i * 0.1, 0.3 + i * 0.1, function (ctx, t) { ctx.globalAlpha = t; ctx.fillStyle = col; fillBelow(ctx, r.pts, (1 - t) * 40); });
+        });
+        L.ground = ds[ds.length - 1];
+        parts.push("dunes");
+      } else if (landName === "forest") {
+        var fs = ranges(3, H * 0.6, H * 0.84, H * 0.06, H * 0.05, 0.001, 0.0015, 0, 0.08, 0.4);
+        // rows of pines along each hill, smaller and paler further away
+        fs.forEach(function (o, i) {
+          var trees = [], count = 26 - i * 6, size = H * (0.035 + o.k * 0.05);
+          for (var j = 0; j < count; j++) { var x = rng() * W; trees.push([x, o.r.y(x) + 4, size * (0.7 + rng() * 0.6)]); }
+          layer(0.25 + i * 0.1, 0.5 + i * 0.1, function (ctx, t) {
+            ctx.globalAlpha = 1; ctx.fillStyle = C.mid(Math.min(1, o.k + 0.1));
+            trees.forEach(function (tr) {
+              var h = tr[2] * t;
+              ctx.beginPath(); ctx.moveTo(tr[0], tr[1] - h * 1.9); ctx.lineTo(tr[0] - h * 0.45, tr[1]); ctx.lineTo(tr[0] + h * 0.45, tr[1]); ctx.closePath(); ctx.fill();
+            });
+          });
+        });
+        L.ground = fs[fs.length - 1].r;
+        parts.push("forest");
+      } else if (landName === "fields") {
+        var far = ridge(n, seed, H * 0.62, H * 0.07, 0.0012, 0.2);
+        var gy = H * 0.66;
+        layer(0.08, 0.3, function (ctx, t) { ctx.globalAlpha = t; ctx.fillStyle = C.mid(0.35); fillBelow(ctx, far.pts, (1 - t) * 30); });
+        var stripeA = mix(mix(pal.bg, accent, 0.25), C.near, 0.45), stripeB = mix(mix(pal.bg, accent, 0.45), C.near, 0.35);
+        layer(0.25, 0.55, function (ctx, t) {
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = stripeA; ctx.fillRect(0, gy, W, H - gy);
+          // furrows running toward a vanishing point on the horizon
+          ctx.fillStyle = stripeB;
+          var vx = W * 0.5;
+          for (var s = -14; s < 14; s += 2) {
+            ctx.beginPath();
+            ctx.moveTo(vx + s * 4, gy); ctx.lineTo(vx + (s + 1) * 4, gy);
+            ctx.lineTo(vx + (s + 1) * W * 0.16 * t, H); ctx.lineTo(vx + s * W * 0.16 * t, H);
+            ctx.closePath(); ctx.fill();
+          }
+        });
+        L.ground = { y: function () { return gy; } };
+        parts.push("fields");
+      } else {
+        // city: two rows of buildings, windows lit after dark
+        var gyc = H * 0.78, rows = [];
+        for (var r = 0; r < 2; r++) {
+          var bs = [], x = -20;
+          while (x < W + 20) {
+            var bw = W * (0.04 + rng() * 0.06), bh = H * (0.1 + rng() * (r ? 0.2 : 0.32)) * (r ? 0.8 : 1);
+            bs.push({ x: x, w: bw, h: bh, roof: rng() });
+            x += bw + (rng() < 0.3 ? W * 0.01 : 0);
+          }
+          rows.push(bs);
+        }
+        rows.forEach(function (bs, r) {
+          var col = r ? C.near : C.mid(0.45), lit = night || time === "dusk";
+          layer(0.1 + r * 0.2, 0.4 + r * 0.2, function (ctx, t) {
+            ctx.globalAlpha = 1;
+            bs.forEach(function (b) {
+              var h = b.h * t, top = gyc - h;
+              ctx.fillStyle = col;
+              ctx.fillRect(b.x, top, b.w, h + H);
+              if (b.roof > 0.8) ctx.fillRect(b.x + b.w * 0.45, top - h * 0.12, b.w * 0.1, h * 0.12);
+              if (r && lit) {
+                ctx.fillStyle = C.glow;
+                for (var wy = top + 14; wy < gyc - 10; wy += 22)
+                  for (var wx = b.x + 8; wx < b.x + b.w - 10; wx += 16)
+                    if (n(wx * 0.05, wy * 0.05 + b.roof * 9) > 0.55) { ctx.globalAlpha = 0.85; ctx.fillRect(wx, wy, 7, 9); }
+                ctx.globalAlpha = 1;
+              }
+            });
+          });
+        });
+        layer(0.4, 0.55, function (ctx) { ctx.globalAlpha = 1; ctx.fillStyle = C.near; ctx.fillRect(0, gyc, W, H - gyc); });
+        L.ground = { y: function () { return gyc; } };
+        parts.push("city");
+      }
+
+      // ---------- subjects ----------
+      var onLand = !L.water || L.island || L.cliff;
+      var landFor = function () {
+        if (L.island) return L.island.x + (rng() - 0.5) * L.island.w * 0.4;
+        if (L.cliff) return L.cliff.left ? MARGIN + rng() * (L.cliff.w - MARGIN - 60) : W - L.cliff.w + 60 + rng() * (L.cliff.w - MARGIN - 60);
+        return MARGIN + W * 0.1 + rng() * (W - 2 * MARGIN - W * 0.2);
+      };
+
+      var catalogue = [
+        { id: "tree", w: 3, ok: onLand && landName !== "city" && landName !== "forest", noun: ["Orchard", "Blossom", "Season", "Branch"] },
+        { id: "pines", w: 1.5, ok: onLand && landName !== "city" && landName !== "dunes", noun: ["Pines", "Evergreen", "Stand"] },
+        { id: "cabin", w: 2, ok: onLand && landName !== "city", noun: ["Shelter", "Hearth", "Cabin"] },
+        { id: "lighthouse", w: 3, ok: !!(L.island || L.cliff), noun: ["Beacon", "Lighthouse", "Watch"] },
+        { id: "sailboat", w: 2.5, ok: L.water, noun: ["Crossing", "Voyage", "Harbour", "Sail"] },
+        { id: "windmill", w: 2, ok: landName === "fields" || landName === "hills", noun: ["Mill", "Harvest", "Turning"] },
+        { id: "turbines", w: 1.5, ok: landName === "hills" || landName === "fields" || landName === "dunes", noun: ["Wind", "Turning", "Current"] },
+        { id: "wires", w: 1.5, ok: landName === "fields" || landName === "hills" || landName === "dunes", noun: ["Wires", "Signal", "Line"] },
+        { id: "tent", w: 1.5, ok: onLand && landName !== "city" && time !== "day", noun: ["Campfire", "Embers", "Camp"] },
+        { id: "bridge", w: 1.5, ok: landName === "lake", noun: ["Bridge", "Crossing", "Span"] },
+        { id: "road", w: 1.5, ok: landName === "fields" || landName === "hills" || landName === "dunes", noun: ["Road", "Way Home", "Journey"] },
+        { id: "flock", w: 2.5, ok: true, noun: ["Murmur", "Migration", "Gathering"] },
+        { id: "geese", w: 2, ok: true, noun: ["Passage", "Migration", "Flight"] },
+        { id: "gull", w: 1.5, ok: L.water || landName === "cliffs", noun: ["Gull", "Flight", "Glide"] },
+        { id: "balloon", w: 1.5, ok: !night, noun: ["Ascent", "Drift", "Balloon"] },
+        { id: "kite", w: 1.2, ok: !night && (landName === "hills" || landName === "fields" || landName === "dunes"), noun: ["Kite", "Updraft", "Tether"] },
+        { id: "moon", w: 2, ok: night || time === "dusk", noun: ["Crescent", "Moonrise", "Moon"] },
+        { id: "meteor", w: 1.2, ok: night, noun: ["Falling Star", "Wish", "Meteor"] },
+        { id: "rainbow", w: 1.2, ok: time === "day", noun: ["Rainbow", "After Rain", "Arc"] },
+        { id: "leaves", w: 1, ok: onLand && landName !== "city" && landName !== "dunes", noun: ["Autumn", "Falling", "Leaves"] }
+      ];
+      var options = catalogue.filter(function (c) { return c.ok; }).map(function (c) { return [c, c.w]; });
+      var main = pickWeighted(rng, options);
+      var chosen = [main];
+      // sometimes a second, quieter subject in the sky
+      var skyish = ["flock", "geese", "gull", "balloon", "moon", "meteor"];
+      if (skyish.indexOf(main.id) < 0 && rng() < 0.45) {
+        var extra = options.filter(function (o) { return skyish.indexOf(o[0].id) >= 0; });
+        if (extra.length) chosen.push(pickWeighted(rng, extra));
+      }
+
+      // the sun or moon disc behind everything (unless the subject is the moon itself)
+      var showOrb = chosen.every(function (c) { return c.id !== "moon"; }) && rng() < 0.75;
+      if (showOrb) layers.splice(1, 0, { from: 0.02, to: 0.25, draw: function (ctx, t) {
+        ctx.globalAlpha = t * 0.95; ctx.fillStyle = night ? C.light : mix(pal.bg, accent, time === "dusk" ? 0.75 : 0.55);
+        circle(ctx, orb.x, orb.y + (1 - t) * 50, orb.r);
+      } });
+
+      // ---------- weather and sky details ----------
+      var weather = pickWeighted(rng, [
+        ["clear", 4], ["clouds", time === "night" ? 0 : 2.5], ["rain", 1], ["snow", landName === "dunes" || landName === "sea" ? 0 : 1],
+        ["fog", 1.2], ["aurora", night ? 1.5 : 0], ["wind", 0.8]
+      ]);
+      if (night) {
+        var stars = [];
+        for (var s = 0; s < 220; s++) stars.push([rng() * W, rng() * L.horizon * 0.9, 0.6 + rng() * 1.8, rng()]);
+        layers.splice(1, 0, { from: 0.0, to: 0.4, draw: function (ctx, t) {
+          ctx.fillStyle = C.light;
+          stars.forEach(function (st) { ctx.globalAlpha = smooth(t * 1.6 - st[3] * 0.6) * (0.35 + st[3] * 0.5); circle(ctx, st[0], st[1], st[2]); });
+        } });
+      }
+
+      chosen.forEach(function (c) { addSubject(c.id); });
+      chosen.slice().reverse().forEach(function (c) { parts.unshift(c.id === "tree" ? "lone tree" : c.id === "flock" ? "murmuration" : c.id); });
+      addWeather(weather);
+      if (weather !== "clear") parts.push(weather);
+      parts.push(time);
+
+      function addSubject(id) {
+        var x, y, s;
+        if (id === "tree") {
+          x = landFor(); y = L.ground.y(x);
+          var season = weather === "snow" ? "bare" : pickWeighted(rng, [["blossom", 2], ["autumn", 1.5], ["green", 1], ["bare", 0.5]]);
+          var leafInks = season === "autumn" ? ["#c8553d", "#e0a458", "#b33f40", "#d98f4e"] :
+            season === "green" ? [mix(ink, "#5b8c5a", 0.6), mix(ink, "#7aa95c", 0.5), "#6b8f71"] : pal.ink.slice(1);
+          var maxD = 8 + (rng() < 0.5 ? 1 : 0), byDepth = [], tips = [], lean = (rng() - 0.5) * 0.25;
+          for (var d = 0; d <= maxD; d++) byDepth.push([]);
+          (function grow(x0, y0, ang, len, d) {
+            var x2 = x0 + Math.cos(ang) * len, y2 = y0 + Math.sin(ang) * len;
+            byDepth[d].push([x0, y0, x2, y2]);
+            if (d === maxD) { tips.push([x2, y2]); return; }
+            var spread = 0.32 + rng() * 0.28, kids = rng() < 0.12 ? 3 : 2;
+            for (var k = 0; k < kids; k++) {
+              var side = kids === 3 ? k - 1 : k * 2 - 1;
+              grow(x2, y2, ang + side * spread + (rng() - 0.5) * 0.3 + lean * 0.15, len * (0.7 + rng() * 0.12), d + 1);
+            }
+          })(x, y, -Math.PI / 2 + lean * 0.4, H * (0.1 + rng() * 0.05), 0);
+          var leaves = season === "bare" ? [] : tips.map(function (tp) { return [tp[0] + (rng() - 0.5) * 14, tp[1] + (rng() - 0.5) * 14, 4 + rng() * 6, leafInks[rng() * leafInks.length | 0], rng()]; });
+          layer(0.45, 0.9, function (ctx, t) {
+            ctx.strokeStyle = C.near; ctx.lineCap = "round"; ctx.globalAlpha = 1;
+            var g = t * (maxD + 1.6);
+            for (var d = 0; d <= maxD; d++) {
+              var f = clamp01(g - d);
+              if (f <= 0) break;
+              ctx.lineWidth = Math.max(1.1, W * 0.016 * Math.pow(0.68, d));
+              ctx.beginPath();
+              byDepth[d].forEach(function (sg) { ctx.moveTo(sg[0], sg[1]); ctx.lineTo(sg[0] + (sg[2] - sg[0]) * f, sg[1] + (sg[3] - sg[1]) * f); });
+              ctx.stroke();
+            }
+          });
+          layer(0.8, 1, function (ctx, t) {
+            leaves.forEach(function (lf) { var a = smooth(t * 1.6 - lf[4] * 0.6); if (a <= 0) return; ctx.globalAlpha = a * 0.85; ctx.fillStyle = lf[3]; circle(ctx, lf[0], lf[1], lf[2] * a); });
+          });
+        } else if (id === "pines") {
+          var count = 3 + (rng() * 4 | 0), base = landFor(), pines = [];
+          for (var i = 0; i < count; i++) { var px = base + (rng() - 0.5) * W * 0.25; pines.push([px, L.ground.y(px) + 3, H * (0.08 + rng() * 0.08)]); }
+          pines.sort(function (a, b) { return a[2] - b[2]; });
+          layer(0.5, 0.85, function (ctx, t) {
+            ctx.fillStyle = C.near; ctx.globalAlpha = 1;
+            pines.forEach(function (p) {
+              var h = p[2] * t, w = h * 0.42;
+              for (var tier = 0; tier < 4; tier++) {
+                var ty = p[1] - h * (tier * 0.22), th = h * (0.5 - tier * 0.06), tw = w * (1 - tier * 0.2);
+                ctx.beginPath(); ctx.moveTo(p[0], ty - th); ctx.lineTo(p[0] - tw, ty); ctx.lineTo(p[0] + tw, ty); ctx.closePath(); ctx.fill();
+              }
+            });
+          });
+        } else if (id === "cabin") {
+          x = landFor(); y = L.ground.y(x); s = W * (0.07 + rng() * 0.03);
+          var lit = time !== "day";
+          var smoke = [];
+          for (var i = 0; i < 9; i++) smoke.push([i, rng()]);
+          layer(0.5, 0.75, function (ctx, t) {
+            var h = s * 0.6 * t, top = y - h;
+            ctx.globalAlpha = 1; ctx.fillStyle = C.near;
+            ctx.fillRect(x - s / 2, top, s, h + 6);
+            ctx.beginPath(); ctx.moveTo(x - s * 0.62, top + 2); ctx.lineTo(x, top - s * 0.42 * t); ctx.lineTo(x + s * 0.62, top + 2); ctx.closePath(); ctx.fill();
+            ctx.fillRect(x + s * 0.2, top - s * 0.35 * t, s * 0.09, s * 0.3 * t);
+            if (lit) {
+              ctx.fillStyle = C.glow; ctx.globalAlpha = 0.9 * t;
+              ctx.fillRect(x - s * 0.3, top + h * 0.3, s * 0.18, s * 0.16);
+              var g = ctx.createRadialGradient(x - s * 0.21, top + h * 0.38, 0, x - s * 0.21, top + h * 0.38, s * 0.6);
+              g.addColorStop(0, alpha(C.glow, 0.25)); g.addColorStop(1, alpha(C.glow, 0));
+              ctx.fillStyle = g; ctx.fillRect(x - s, top - s * 0.4, s * 2, s * 1.4);
+            }
+          });
+          layer(0.7, 1, function (ctx, t) {
+            ctx.fillStyle = mix(C.light, pal.bg, 0.3);
+            smoke.forEach(function (p) {
+              var k = p[0] / 9, a = smooth(t * 1.5 - k);
+              ctx.globalAlpha = a * (0.35 - k * 0.3);
+              circle(ctx, x + s * 0.245 + Math.sin(k * 5 + p[1]) * s * 0.18 + k * s * 0.6, y - s * 0.95 - k * s * 1.6, s * (0.05 + k * 0.12));
+            });
+          });
+        } else if (id === "lighthouse") {
+          x = landFor(); y = L.ground.y(x); var hh = H * (0.17 + rng() * 0.06), bw = W * 0.035;
+          var beamLeft = rng() < 0.5, lamp = time !== "day";
+          layer(0.5, 0.8, function (ctx, t) {
+            var h = hh * t, top = y - h;
+            ctx.globalAlpha = 1; ctx.fillStyle = mix(pal.bg, "#ffffff", 0.4);
+            ctx.beginPath(); ctx.moveTo(x - bw / 2, y + 4); ctx.lineTo(x - bw * 0.32, top); ctx.lineTo(x + bw * 0.32, top); ctx.lineTo(x + bw / 2, y + 4); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = accent === pal.bg ? C.near : (dark ? "#b33f40" : accent);
+            for (var b = 0; b < 3; b++) {
+              var y1 = y - h * (0.15 + b * 0.28), y2 = y1 - h * 0.12, f1 = (y - y1) / hh, f2 = (y - y2) / hh;
+              ctx.beginPath(); ctx.moveTo(x - bw * (0.5 - 0.18 * f1), y1); ctx.lineTo(x - bw * (0.5 - 0.18 * f2), y2); ctx.lineTo(x + bw * (0.5 - 0.18 * f2), y2); ctx.lineTo(x + bw * (0.5 - 0.18 * f1), y1); ctx.closePath(); ctx.fill();
+            }
+            ctx.fillStyle = C.near;
+            ctx.fillRect(x - bw * 0.45, top - 6, bw * 0.9, 6);
+            ctx.fillRect(x - bw * 0.22, top - bw * 0.55, bw * 0.44, bw * 0.5);
+            ctx.beginPath(); ctx.moveTo(x - bw * 0.3, top - bw * 0.55); ctx.lineTo(x, top - bw * 0.85); ctx.lineTo(x + bw * 0.3, top - bw * 0.55); ctx.closePath(); ctx.fill();
+            if (lamp) { ctx.fillStyle = C.glow; ctx.fillRect(x - bw * 0.15, top - bw * 0.48, bw * 0.3, bw * 0.34); }
+          });
+          if (lamp) layer(0.75, 1, function (ctx, t) {
+            var ly = y - hh - W * 0.035 * 0.3, dir = beamLeft ? -1 : 1, len = W * 0.55 * t;
+            var g = ctx.createLinearGradient(x, ly, x + dir * len, ly);
+            g.addColorStop(0, alpha(C.glow, 0.35)); g.addColorStop(1, alpha(C.glow, 0));
+            ctx.globalAlpha = 1; ctx.fillStyle = g;
+            ctx.beginPath(); ctx.moveTo(x, ly); ctx.lineTo(x + dir * len, ly - H * 0.07); ctx.lineTo(x + dir * len, ly + H * 0.05); ctx.closePath(); ctx.fill();
+          });
+        } else if (id === "sailboat") {
+          x = W * (0.25 + rng() * 0.5); y = L.horizon + (H - L.horizon) * (0.25 + rng() * 0.35); s = W * (0.05 + rng() * 0.04);
+          var sail = dark ? mix(pal.bg, "#ffffff", 0.6) : mix(pal.bg, "#ffffff", 0.5), dir = rng() < 0.5 ? -1 : 1;
+          function boat(ctx, t, flip) {
+            var k = flip ? -1 : 1;
+            ctx.fillStyle = C.near;
+            ctx.beginPath(); ctx.moveTo(x - s * 0.7, y); ctx.lineTo(x + s * 0.7, y); ctx.lineTo(x + s * 0.5, y + k * s * 0.18); ctx.lineTo(x - s * 0.5, y + k * s * 0.18); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = sail;
+            ctx.beginPath(); ctx.moveTo(x, y - k * 6); ctx.lineTo(x, y - k * s * 1.5 * t); ctx.lineTo(x + dir * s * 0.65 * t, y - k * 6); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(x - dir * 4, y - k * 8); ctx.lineTo(x - dir * 4, y - k * s * 1.15 * t); ctx.lineTo(x - dir * s * 0.45 * t, y - k * 8); ctx.closePath(); ctx.fill();
+          }
+          layer(0.5, 0.85, function (ctx, t) {
+            ctx.globalAlpha = 1; boat(ctx, t, false);
+            ctx.globalAlpha = 0.22; boat(ctx, t, true);
+          });
+        } else if (id === "windmill") {
+          x = landFor(); y = L.ground.y(x); s = H * (0.13 + rng() * 0.05);
+          var rot = rng() * Math.PI;
+          layer(0.5, 0.9, function (ctx, t) {
+            ctx.globalAlpha = 1; ctx.fillStyle = C.near;
+            var h = s * t, top = y - h;
+            ctx.beginPath(); ctx.moveTo(x - s * 0.18, y + 4); ctx.lineTo(x - s * 0.1, top); ctx.lineTo(x + s * 0.1, top); ctx.lineTo(x + s * 0.18, y + 4); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(x - s * 0.13, top); ctx.lineTo(x, top - s * 0.14); ctx.lineTo(x + s * 0.13, top); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = C.near; ctx.lineWidth = 3;
+            var hub = [x, top - s * 0.04], a0 = rot + t * 0.8;
+            for (var b = 0; b < 4; b++) {
+              var a = a0 + b * Math.PI / 2, ex = hub[0] + Math.cos(a) * s * 0.55 * t, ey = hub[1] + Math.sin(a) * s * 0.55 * t;
+              ctx.beginPath(); ctx.moveTo(hub[0], hub[1]); ctx.lineTo(ex, ey); ctx.stroke();
+              ctx.save(); ctx.translate(hub[0], hub[1]); ctx.rotate(a); ctx.globalAlpha = 0.75; ctx.fillRect(s * 0.12 * t, 0, s * 0.42 * t, s * 0.09); ctx.restore();
+            }
+          });
+        } else if (id === "turbines") {
+          var count = 2 + (rng() * 3 | 0), tb = [];
+          for (var i = 0; i < count; i++) { var tx = MARGIN + rng() * (W - 2 * MARGIN); tb.push([tx, L.ground.y(tx) + 2, H * (0.12 + rng() * 0.12), rng() * 6]); }
+          layer(0.5, 0.9, function (ctx, t) {
+            ctx.strokeStyle = C.near; ctx.fillStyle = C.near; ctx.globalAlpha = 1;
+            tb.forEach(function (p) {
+              var h = p[2] * t, hx = p[0], hy = p[1] - h;
+              ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(hx, p[1]); ctx.lineTo(hx, hy); ctx.stroke();
+              ctx.lineWidth = 2.5;
+              for (var b = 0; b < 3; b++) {
+                var a = p[3] + t * 1.2 + b * Math.PI * 2 / 3;
+                ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + Math.cos(a) * p[2] * 0.42 * t, hy + Math.sin(a) * p[2] * 0.42 * t); ctx.stroke();
+              }
+              circle(ctx, hx, hy, 4);
+            });
+          });
+        } else if (id === "wires") {
+          var poles = [], count = 5;
+          for (var i = 0; i < count; i++) {
+            var k = i / (count - 1), px = W * (0.08 + 0.95 * Math.pow(k, 0.8));
+            poles.push([px, L.ground.y(px) + 2, H * (0.26 - k * 0.15)]);
+          }
+          var perched = [];
+          for (var i = 0; i < 6 + (rng() * 10 | 0); i++) perched.push([rng() * (count - 1), rng() < 0.5 ? 0 : 1, rng()]);
+          layer(0.5, 0.9, function (ctx, t) {
+            ctx.strokeStyle = C.near; ctx.fillStyle = C.near; ctx.globalAlpha = 1;
+            poles.forEach(function (p) {
+              ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0], p[1] - p[2] * t); ctx.stroke();
+              ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(p[0] - p[2] * 0.15, p[1] - p[2] * 0.92 * t); ctx.lineTo(p[0] + p[2] * 0.15, p[1] - p[2] * 0.92 * t); ctx.stroke();
+            });
+            ctx.lineWidth = 1.3;
+            for (var w = 0; w < 2; w++) {
+              ctx.beginPath();
+              for (var i = 0; i < count - 1; i++) {
+                var a = poles[i], b = poles[i + 1], off = (w ? 0.13 : -0.13);
+                var ax = a[0] + a[2] * off, ay = a[1] - a[2] * 0.92 * t, bx = b[0] + b[2] * off, by = b[1] - b[2] * 0.92 * t;
+                ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax + bx) / 2, Math.max(ay, by) + 22 * t, bx, by);
+              }
+              ctx.stroke();
+            }
+          });
+          layer(0.85, 1, function (ctx, t) {
+            ctx.fillStyle = C.near;
+            perched.forEach(function (b) {
+              var i = b[0] | 0, f = b[0] - i, a = poles[i], c = poles[i + 1], off = b[1] ? 0.13 : -0.13;
+              var ax = a[0] + a[2] * off, ay = a[1] - a[2] * 0.92, cx = c[0] + c[2] * off, cy = c[1] - c[2] * 0.92;
+              var bx = ax + (cx - ax) * f, by = ay + (cy - ay) * f + 22 * 4 * f * (1 - f) - 5;
+              var sz = 3 + a[2] / H * 14;
+              ctx.globalAlpha = smooth(t * 2 - b[2]); circle(ctx, bx, by, sz);
+              ctx.beginPath(); ctx.moveTo(bx + sz * 0.6, by); ctx.lineTo(bx + sz * 2, by + sz * 1.2); ctx.lineTo(bx + sz * 0.2, by + sz * 0.6); ctx.fill();
+            });
+          });
+        } else if (id === "tent") {
+          x = landFor(); y = L.ground.y(x); s = W * (0.06 + rng() * 0.02);
+          var sparks = [];
+          for (var i = 0; i < 14; i++) sparks.push([rng() - 0.5, rng(), rng()]);
+          layer(0.5, 0.8, function (ctx, t) {
+            ctx.globalAlpha = 1; ctx.fillStyle = C.near;
+            ctx.beginPath(); ctx.moveTo(x - s * 0.6, y + 3); ctx.lineTo(x, y - s * 0.7 * t); ctx.lineTo(x + s * 0.6, y + 3); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = C.glow; ctx.globalAlpha = 0.8 * t;
+            ctx.beginPath(); ctx.moveTo(x - s * 0.1, y + 3); ctx.lineTo(x, y - s * 0.3 * t); ctx.lineTo(x + s * 0.1, y + 3); ctx.closePath(); ctx.fill();
+          });
+          layer(0.7, 1, function (ctx, t) {
+            var fx = x + s * 1.1, g = ctx.createRadialGradient(fx, y, 0, fx, y, s * 1.4);
+            g.addColorStop(0, alpha(C.glow, 0.45 * t)); g.addColorStop(1, alpha(C.glow, 0));
+            ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(fx - s * 1.5, y - s * 1.5, s * 3, s * 3);
+            ctx.fillStyle = "#f08a4b"; ctx.globalAlpha = t;
+            ctx.beginPath(); ctx.moveTo(fx - s * 0.12, y + 2); ctx.quadraticCurveTo(fx, y - s * 0.45 * t, fx + s * 0.12, y + 2); ctx.fill();
+            ctx.fillStyle = C.glow;
+            sparks.forEach(function (sp) { ctx.globalAlpha = t * (1 - sp[1]) * 0.9; circle(ctx, fx + sp[0] * s * 0.5, y - s * (0.3 + sp[1] * 1.2) * t, 2 + sp[2] * 2); });
+          });
+        } else if (id === "bridge") {
+          var bl = W * (0.1 + rng() * 0.12), br = W - W * (0.1 + rng() * 0.12), arches = 2 + (rng() * 3 | 0);
+          var by = L.horizon + (H - L.horizon) * (0.2 + rng() * 0.15), rise = H * (0.045 + rng() * 0.03);
+          function span(ctx, t, flip) {
+            var k = flip ? -1 : 1, aw = (br - bl) / arches, deck = by - k * rise, thick = H * 0.014, pier = aw * 0.12;
+            var built = bl + (br - bl) * t;            // the bridge is laid from one bank to the other
+            ctx.fillStyle = C.near;
+            ctx.fillRect(bl, Math.min(deck - k * thick, deck), Math.max(0, built - bl), thick);
+            for (var a = 0; a < arches; a++) {
+              var x0 = bl + a * aw, x1 = x0 + aw;
+              if (x0 >= built) break;
+              ctx.save();
+              ctx.beginPath(); ctx.rect(bl, Math.min(deck, by) - 2, built - bl, Math.abs(by - deck) + 4); ctx.clip();
+              // the solid between deck and water, with the arch opening cut out of it
+              ctx.beginPath();
+              ctx.moveTo(x0, deck); ctx.lineTo(x1, deck); ctx.lineTo(x1, by);
+              ctx.lineTo(x1 - pier, by);
+              // tall arches: the opening reaches most of the way up to the deck
+              ctx.quadraticCurveTo((x0 + x1) / 2, deck - k * rise * 0.7, x0 + pier, by);
+              ctx.lineTo(x0, by); ctx.closePath(); ctx.fill();
+              ctx.restore();
+            }
+          }
+          layer(0.5, 0.85, function (ctx, t) { ctx.globalAlpha = 1; span(ctx, t, false); ctx.globalAlpha = 0.22; span(ctx, t, true); });
+        } else if (id === "road") {
+          var vx = W * (0.35 + rng() * 0.3), gy = L.ground.y(vx), sway = (rng() - 0.5) * W * 0.5;
+          var roadC = mix(pal.bg, C.near, 0.25);
+          layer(0.45, 0.8, function (ctx, t) {
+            ctx.globalAlpha = 1; ctx.fillStyle = roadC;
+            var topY = H - (H - gy) * t;
+            ctx.beginPath();
+            ctx.moveTo(W * 0.5 - W * 0.16, H + 10);
+            ctx.quadraticCurveTo(vx + sway - W * 0.02, (gy + H) / 2, vx - 3, Math.max(gy, topY));
+            ctx.lineTo(vx + 3, Math.max(gy, topY));
+            ctx.quadraticCurveTo(vx + sway + W * 0.02, (gy + H) / 2, W * 0.5 + W * 0.16, H + 10);
+            ctx.closePath(); ctx.fill();
+          });
+        } else if (id === "flock") {
+          var cy = H * (0.22 + rng() * 0.12), len = W * (0.45 + rng() * 0.2), x0 = W / 2 - len / 2 + (rng() - 0.5) * W * 0.1;
+          var bend = (rng() < 0.5 ? -1 : 1) * H * (0.1 + rng() * 0.12);
+          var sp = [[x0, cy + (rng() - 0.5) * H * 0.1], [x0 + len * 0.3, cy + bend], [x0 + len * 0.7, cy - bend * (0.4 + rng() * 0.8)], [x0 + len, cy + (rng() - 0.5) * H * 0.1]];
+          var maxW = H * (0.06 + rng() * 0.05), wseed = rng() * 50, birds = [], fdir = rng() < 0.5 ? -1 : 1;
+          for (var tries = 0; birds.length < 1400 && tries < 9000; tries++) {
+            var tt = rng(), u = 1 - tt;
+            var bx = u * u * u * sp[0][0] + 3 * u * u * tt * sp[1][0] + 3 * u * tt * tt * sp[2][0] + tt * tt * tt * sp[3][0];
+            var byy = u * u * u * sp[0][1] + 3 * u * u * tt * sp[1][1] + 3 * u * tt * tt * sp[2][1] + tt * tt * tt * sp[3][1];
+            var width = maxW * Math.pow(Math.sin(Math.PI * tt), 0.6) * (0.2 + 1.2 * n(tt * 4.5 + wseed, 1.7));
+            var px = bx, py = byy + gauss(rng) * 0.36 * width;
+            if (rng() > 0.35 + 0.65 * n(px * 0.004 + 50, py * 0.004)) continue;
+            birds.push([px, py, rng() * 6.28, 2.4 + rng() * 2.6, rng()]);
+          }
+          layer(0.55, 1, function (ctx, t) {
+            ctx.strokeStyle = night ? C.light : C.near; ctx.lineWidth = 1.6; ctx.lineCap = "round"; ctx.globalAlpha = 1;
+            ctx.beginPath();
+            birds.forEach(function (b) {
+              var e = smooth(t * 1.5 - b[4] * 0.5); if (e <= 0) return;
+              var bx = b[0] + (1 - e) * W * 0.25 * fdir, by = b[1];
+              ctx.moveTo(bx - b[3], by - b[3] * 0.4); ctx.lineTo(bx, by); ctx.lineTo(bx + b[3], by - b[3] * 0.4);
+            });
+            ctx.stroke();
+          });
+        } else if (id === "geese") {
+          var ax = W * (0.3 + rng() * 0.4), ay = H * (0.18 + rng() * 0.15), count = 7 + (rng() * 8 | 0), gdir = rng() < 0.5 ? -1 : 1, gap = W * 0.03;
+          var gs = [];
+          for (var i = 0; i < count; i++) { var side = i % 2 ? 1 : -1, rank = Math.ceil(i / 2); gs.push([ax - gdir * rank * gap, ay + side * rank * gap * 0.55, rng()]); }
+          layer(0.6, 1, function (ctx, t) {
+            ctx.strokeStyle = night ? C.light : C.near; ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.globalAlpha = 1;
+            ctx.beginPath();
+            gs.forEach(function (g) { var e = smooth(t * 1.4 - g[2] * 0.4); if (e <= 0) return; birdPath(ctx, g[0] - (1 - e) * W * 0.3 * gdir, g[1], 13, g[2]); });
+            ctx.stroke();
+          });
+        } else if (id === "gull") {
+          var gx = W * (0.25 + rng() * 0.5), gy2 = H * (0.2 + rng() * 0.15), gsz = 34 + rng() * 22;
+          layer(0.6, 1, function (ctx, t) {
+            ctx.strokeStyle = night ? C.light : C.near; ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.globalAlpha = smooth(t * 1.5);
+            ctx.beginPath(); birdPath(ctx, gx - (1 - t) * 80, gy2 + (1 - t) * 20, gsz, 0.5 + 0.4 * Math.sin(t * 6));
+            birdPath(ctx, gx + gsz * 3, gy2 + gsz * 1.5, gsz * 0.45, 0.6); birdPath(ctx, gx - gsz * 2.4, gy2 + gsz * 2.2, gsz * 0.35, 0.3);
+            ctx.stroke();
+          });
+        } else if (id === "balloon") {
+          var bx2 = W * (0.25 + rng() * 0.5), by2 = H * (0.22 + rng() * 0.15), br2 = W * (0.045 + rng() * 0.03);
+          var stripeC = [accent, mix(pal.bg, "#ffffff", 0.5)];
+          layer(0.55, 1, function (ctx, t) {
+            var cy2 = by2 + (1 - t) * H * 0.25;
+            ctx.globalAlpha = smooth(t * 2);
+            for (var sIdx = 0; sIdx < 6; sIdx++) {
+              ctx.fillStyle = stripeC[sIdx % 2];
+              ctx.beginPath();
+              var a0 = -br2 + sIdx * br2 / 3, a1 = a0 + br2 / 3;
+              ctx.moveTo(bx2 + a0 * 0.35, cy2 + br2 * 1.1);
+              ctx.bezierCurveTo(bx2 + a0 * 1.3, cy2 + br2 * 0.3, bx2 + a0 * 1.3, cy2 - br2 * 1.2, bx2 + (a0 + a1) / 2 * 0.2, cy2 - br2 * 1.1);
+              ctx.bezierCurveTo(bx2 + a1 * 1.3, cy2 - br2 * 1.2, bx2 + a1 * 1.3, cy2 + br2 * 0.3, bx2 + a1 * 0.35, cy2 + br2 * 1.1);
+              ctx.closePath(); ctx.fill();
+            }
+            ctx.strokeStyle = C.near; ctx.lineWidth = 1.2; ctx.beginPath();
+            ctx.moveTo(bx2 - br2 * 0.32, cy2 + br2 * 1.1); ctx.lineTo(bx2 - br2 * 0.15, cy2 + br2 * 1.45);
+            ctx.moveTo(bx2 + br2 * 0.32, cy2 + br2 * 1.1); ctx.lineTo(bx2 + br2 * 0.15, cy2 + br2 * 1.45); ctx.stroke();
+            ctx.fillStyle = C.near; ctx.fillRect(bx2 - br2 * 0.16, cy2 + br2 * 1.45, br2 * 0.32, br2 * 0.22);
+          });
+        } else if (id === "kite") {
+          var kx = W * (0.3 + rng() * 0.45), ky = H * (0.2 + rng() * 0.12), kz = W * 0.03, anchor = [kx - W * 0.15 + rng() * W * 0.1, 0];
+          anchor[1] = L.ground.y(anchor[0]);
+          layer(0.55, 1, function (ctx, t) {
+            var cy3 = ky + (1 - t) * H * 0.2;
+            ctx.globalAlpha = 1; ctx.strokeStyle = C.near; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(anchor[0], anchor[1]); ctx.quadraticCurveTo((anchor[0] + kx) / 2 + W * 0.05, (anchor[1] + cy3) / 2 + H * 0.06, kx, cy3 + kz * 1.2); ctx.stroke();
+            ctx.fillStyle = accent;
+            ctx.beginPath(); ctx.moveTo(kx, cy3 - kz * 1.3); ctx.lineTo(kx + kz, cy3); ctx.lineTo(kx, cy3 + kz * 1.2); ctx.lineTo(kx - kz, cy3); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = C.near; ctx.beginPath(); ctx.moveTo(kx, cy3 + kz * 1.2);
+            for (var tl = 1; tl <= 6; tl++) ctx.lineTo(kx + Math.sin(tl * 1.3) * kz * 0.6, cy3 + kz * 1.2 + tl * kz * 0.5 * t);
+            ctx.stroke();
+          });
+        } else if (id === "moon") {
+          var mx = W * (0.25 + rng() * 0.5), my = H * (0.2 + rng() * 0.1), mr = W * (0.06 + rng() * 0.04), phase = 0.35 + rng() * 0.4;
+          layers.splice(2, 0, { from: 0.1, to: 0.5, draw: function (ctx, t) {
+            ctx.globalAlpha = smooth(t * 1.5); ctx.fillStyle = C.light;
+            var yy = my + (1 - t) * 60;
+            var g = ctx.createRadialGradient(mx, yy, mr, mx, yy, mr * 3);
+            g.addColorStop(0, alpha(C.light, 0.18)); g.addColorStop(1, alpha(C.light, 0));
+            ctx.save(); ctx.fillStyle = g; ctx.fillRect(mx - mr * 3, yy - mr * 3, mr * 6, mr * 6); ctx.restore();
+            ctx.save(); ctx.beginPath(); ctx.arc(mx, yy, mr, 0, Math.PI * 2); ctx.clip();
+            ctx.fillStyle = C.light; ctx.fillRect(mx - mr, yy - mr, mr * 2, mr * 2);
+            ctx.fillStyle = mix(pal.bg, C.skyLow, 0.3); circle(ctx, mx + mr * phase * 1.6, yy - mr * 0.15, mr);
+            ctx.restore();
+          } });
+        } else if (id === "meteor") {
+          var sx = W * (0.25 + rng() * 0.5), sy = H * (0.12 + rng() * 0.12), ang = Math.PI * (0.15 + rng() * 0.15) * (rng() < 0.5 ? 1 : -1) + (rng() < 0.5 ? 0 : Math.PI), mlen = W * (0.18 + rng() * 0.1);
+          layer(0.7, 1, function (ctx, t) {
+            var hx = sx + Math.cos(ang) * mlen * t, hy = sy + Math.abs(Math.sin(ang)) * mlen * t;
+            var g = ctx.createLinearGradient(sx, sy, hx, hy);
+            g.addColorStop(0, alpha(C.light, 0)); g.addColorStop(1, alpha(C.light, 0.9));
+            ctx.globalAlpha = 1; ctx.strokeStyle = g; ctx.lineWidth = 3; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(hx, hy); ctx.stroke();
+            ctx.fillStyle = C.light; circle(ctx, hx, hy, 3.5);
+          });
+        } else if (id === "rainbow") {
+          var rx = W * (0.3 + rng() * 0.4), ry = L.horizon + H * 0.05, rr = W * (0.32 + rng() * 0.15);
+          var bands = ["#e07a5f", "#f2cc8f", "#81b29a", "#5f8fbf", "#9b72aa"];
+          layers.splice(2, 0, { from: 0.35, to: 0.75, draw: function (ctx, t) {
+            ctx.lineWidth = W * 0.012; ctx.lineCap = "butt";
+            bands.forEach(function (c, i) {
+              ctx.globalAlpha = 0.32 * t; ctx.strokeStyle = c;
+              ctx.beginPath(); ctx.arc(rx, ry, rr - i * W * 0.012, Math.PI, Math.PI + Math.PI * t); ctx.stroke();
+            });
+          } });
+        } else if (id === "leaves") {
+          var lv = [], cols = ["#c8553d", "#e0a458", "#b33f40", "#d98f4e"];
+          for (var i = 0; i < 70; i++) lv.push([rng() * W, rng() * H * 0.8, 5 + rng() * 6, rng() * 6.28, cols[rng() * 4 | 0], rng()]);
+          layer(0.6, 1, function (ctx, t) {
+            lv.forEach(function (l) {
+              var a = smooth(t * 1.5 - l[5] * 0.5); if (a <= 0) return;
+              ctx.save(); ctx.translate(l[0] + Math.sin(l[3] + t * 3) * 20, l[1] + a * 60); ctx.rotate(l[3] + t * 2);
+              ctx.globalAlpha = a * 0.85; ctx.fillStyle = l[4];
+              ctx.beginPath(); ctx.ellipse(0, 0, l[2], l[2] * 0.45, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+            });
+          });
+        }
+      }
+
+      function addWeather(kind) {
+        if (kind === "clouds") {
+          var cl = [];
+          for (var i = 0; i < 3 + (rng() * 4 | 0); i++) {
+            var cx = rng() * W, cy = H * (0.12 + rng() * 0.25), puffs = [];
+            for (var p = 0; p < 6; p++) puffs.push([(p - 2.5) * W * 0.03 + (rng() - 0.5) * 20, (rng() - 0.5) * 18 - Math.sin(p / 5 * Math.PI) * 18, W * (0.025 + rng() * 0.025)]);
+            cl.push([cx, cy, puffs, rng()]);
+          }
+          layers.splice(2, 0, { from: 0.05, to: 0.45, draw: function (ctx, t) {
+            ctx.fillStyle = mix(pal.bg, "#ffffff", 0.6);
+            cl.forEach(function (c) { ctx.globalAlpha = 0.55 * smooth(t * 1.5 - c[3] * 0.5); c[2].forEach(function (pf) { circle(ctx, c[0] + pf[0] + (1 - t) * 60, c[1] + pf[1], pf[2]); }); });
+          } });
+        } else if (kind === "rain") {
+          var drops = [];
+          for (var i = 0; i < 380; i++) drops.push([rng() * W, rng() * H, 18 + rng() * 26, rng()]);
+          layer(0.6, 1, function (ctx, t) {
+            ctx.strokeStyle = night ? C.light : C.near; ctx.lineWidth = 1.2; ctx.globalAlpha = 0.28 * t;
+            ctx.beginPath();
+            drops.forEach(function (d) { var y = d[1] + t * 40; ctx.moveTo(d[0], y); ctx.lineTo(d[0] - d[2] * 0.25, y + d[2]); });
+            ctx.stroke();
+          });
+        } else if (kind === "snow") {
+          var flakes = [];
+          for (var i = 0; i < 320; i++) flakes.push([rng() * W, rng() * H, 1.5 + rng() * 3, rng()]);
+          layer(0.55, 1, function (ctx, t) {
+            ctx.fillStyle = mix(pal.bg, "#ffffff", 0.85);
+            flakes.forEach(function (f) { ctx.globalAlpha = 0.8 * smooth(t * 1.5 - f[3] * 0.5); circle(ctx, f[0] + Math.sin(f[3] * 9 + t * 2) * 8, f[1] - (1 - t) * 50, f[2]); });
+          });
+        } else if (kind === "fog") {
+          layer(0.5, 0.9, function (ctx, t) {
+            for (var b = 0; b < 3; b++) {
+              var fy = L.horizon - H * 0.04 + b * H * 0.1, g = ctx.createLinearGradient(0, fy - H * 0.06, 0, fy + H * 0.06);
+              g.addColorStop(0, alpha(pal.bg, 0)); g.addColorStop(0.5, alpha(pal.bg, 0.55 * t)); g.addColorStop(1, alpha(pal.bg, 0));
+              ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(0, fy - H * 0.06, W, H * 0.12);
+            }
+          });
+        } else if (kind === "aurora") {
+          var cur = [];
+          for (var c = 0; c < 2 + (rng() * 2 | 0); c++) cur.push([rng() * 100, H * (0.12 + rng() * 0.15), c ? accent : "#7fd1a8"]);
+          layers.splice(2, 0, { from: 0.05, to: 0.5, draw: function (ctx, t) {
+            ctx.lineWidth = 3;
+            cur.forEach(function (cu) {
+              for (var x = 0; x < W; x += 5) {
+                var top = cu[1] + (n(x * 0.002 + cu[0], 3) - 0.5) * H * 0.18, h = H * (0.08 + 0.14 * n(x * 0.004 + cu[0], 9));
+                var g = ctx.createLinearGradient(0, top, 0, top + h);
+                g.addColorStop(0, alpha(cu[2], 0)); g.addColorStop(0.7, alpha(cu[2], 0.22 * t)); g.addColorStop(1, alpha(cu[2], 0));
+                ctx.globalAlpha = 1; ctx.strokeStyle = g; ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + h); ctx.stroke();
+              }
+            });
+          } });
+        } else if (kind === "wind") {
+          var gusts = [];
+          for (var i = 0; i < 7; i++) gusts.push([rng() * W * 0.7, H * (0.15 + rng() * 0.45), W * (0.15 + rng() * 0.2), rng()]);
+          layer(0.6, 1, function (ctx, t) {
+            ctx.strokeStyle = mix(pal.bg, "#ffffff", 0.5); ctx.lineWidth = 2; ctx.lineCap = "round";
+            gusts.forEach(function (g) {
+              ctx.globalAlpha = 0.5 * smooth(t * 1.5 - g[3] * 0.5);
+              ctx.beginPath(); ctx.moveTo(g[0], g[1]);
+              ctx.bezierCurveTo(g[0] + g[2] * 0.4, g[1] - 14, g[0] + g[2] * 0.7, g[1] + 10, g[0] + g[2] * t, g[1] - 4);
+              ctx.stroke();
+            });
+          });
+        }
+      }
+
+      var grain = grainLayer(rng, pal);
+      var sceneName = parts.map(function (p, i) { return i ? p : p.charAt(0).toUpperCase() + p.slice(1); }).join(" · ");
+
+      return {
+        scene: sceneName,
+        noun: main.noun,
+        marks: layers.length + " layers",
+        duration: 3600,
+        render: function (ctx, p) {
+          ctx.save();
+          marginClip(ctx);
+          for (var i = 0; i < layers.length; i++) {
+            var ly = layers[i], t = ly.to <= ly.from ? (p >= ly.from ? 1 : 0) : smooth((p - ly.from) / (ly.to - ly.from));
+            if (t <= 0) continue;
+            ctx.save();
+            ly.draw(ctx, t);
+            ctx.restore();
+          }
+          ctx.globalAlpha = 1;
+          ctx.drawImage(grain, 0, 0);
+          ctx.restore();
+        }
+      };
+    }
+
+    function makePiece(seed) {
+      var rng = rngFrom(seed);
+      var n = noise2(rng);
+      var pal = pick(rng, palettes);
+      // most of the time a scene; now and then one of the abstract studies
+      var style = pickWeighted(rng, [["scene", 7], ["flow", 1.4], ["dots", 0.5], ["rings", 0.8], ["watercolour", 1]]);
+      var piece =
+        style === "scene" ? scenePiece(rng, n, pal) :
+        style === "rings" ? ringsPiece(rng, n, pal) :
+        style === "watercolour" ? watercolourPiece(rng, n, pal) :
+        flowPiece(rng, n, pal, style === "dots");
+      var title = pick(rng, adjectives) + " " + pick(rng, piece.noun || nouns);
+
+      piece.title = title;
+      piece.style = piece.scene || { flow: "Flow lines", dots: "Stipple", rings: "Tree rings", watercolour: "Watercolour" }[style];
+      piece.pal = pal;
+      piece.paper = function (ctx) {
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = pal.bg;
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = pal.dark ? "#ffffff" : "#3a2f20";
+        for (var g = 0; g < 14000; g++) {
+          ctx.globalAlpha = 0.015 + rng() * 0.035;
+          ctx.fillRect(rng() * W, rng() * H, 1.3, 1.3);
+        }
+        ctx.globalAlpha = 1;
+      };
+      return piece;
+    }
+
+    // ---------- the page ----------
+
+    // one span per character, each with its own delay, so text arrives in a ripple
+    function spell(el, text, start, step) {
+      el.textContent = "";
+      el.setAttribute("aria-label", text);
+      var i = 0;
+      text.split(" ").forEach(function (word, w) {
+        if (w) { el.appendChild(document.createTextNode(" ")); i++; }
+        // letters of one word stay together so lines only break between words
+        var group = document.createElement("span");
+        group.className = "word";
+        group.setAttribute("aria-hidden", "true");
+        for (var k = 0; k < word.length; k++, i++) {
+          var c = document.createElement("span");
+          c.className = "ch";
+          c.style.setProperty("--d", start + i * step);
+          c.textContent = word[k];
+          group.appendChild(c);
+        }
+        el.appendChild(group);
+      });
+    }
+
+    // sine in-out: no rushed middle, just a slow start and a slow finish
+    function ease(t) { return -(Math.cos(Math.PI * t) - 1) / 2; }
+
+    var front = 1, job = 0, current = null;
+
+    function show() {
+      var my = ++job;
+      var seed = freshSeed();
+      var piece = makePiece(seed);
+      var next = canvases[1 - front], prev = canvases[front];
+      var ctx = next.getContext("2d");
+      front = 1 - front;
+      current = { piece: piece, ctx: ctx, canvas: next, seed: seed, done: false, drawn: new Date() };
+      if (print.classList.contains("flipped")) turn(false);
+
+      piece.paper(ctx);
+      dress(piece.pal);
+      prev.classList.remove("top");
+      next.classList.remove("on");
+      next.classList.add("top");
+      next.setAttribute("aria-label", "Generated artwork titled " + piece.title);
+      prev.removeAttribute("aria-label");
+
+      aboutEl.classList.add("fade");
+      setTimeout(function () {
+        if (my !== job) return;
+        spell(titleEl, piece.title, 0, 40);
+        spell(nonceEl, toHex(seed).match(/.{8}/g).join(" "), 400, 14);
+        aboutEl.classList.remove("fade");
+      }, reduce ? 0 : 900);
+
+      if (reduce) {
+        piece.render(ctx, 1);
+        current.done = true;
+        next.classList.add("on");
+        prev.classList.remove("on");
+        return;
+      }
+
+      requestAnimationFrame(function () {
+        next.classList.add("on");
+        var start = performance.now();
+        (function frame(now) {
+          if (my !== job) return;
+          var t = Math.min(1, (now - start) / piece.duration);
+          piece.render(ctx, ease(t));
+          if (t < 1) requestAnimationFrame(frame);
+          else { current.done = true; prev.classList.remove("on"); }
+        })(start);
+      });
+    }
+
+    document.getElementById("again").addEventListener("click", show);
+
+    document.getElementById("keep").addEventListener("click", function () {
+      var c = current;
+      if (!c.done) { c.piece.render(c.ctx, 1); c.done = true; }
+      var name = "noncesense-" + c.piece.title.toLowerCase().replace(/\s+/g, "-") + "-" + toHex(c.seed).slice(0, 8) + ".png";
+      c.canvas.toBlob(function (blob) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+      });
+    });
+
+    // ---------- the print leans toward the cursor ----------
+
+    var print = document.getElementById("print");
+    var finePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+    if (finePointer && !reduce) {
+      var target = { x: 0, y: 0, glow: 0 }, now = { x: 0, y: 0, glow: 0 }, gx = 50, gy = 50, ticking = false;
+
+      function tick() {
+        // ease toward the target a little each frame
+        now.x += (target.x - now.x) * 0.07;
+        now.y += (target.y - now.y) * 0.07;
+        now.glow += (target.glow - now.glow) * 0.06;
+        print.style.setProperty("--ry", (now.x * 5).toFixed(3) + "deg");
+        print.style.setProperty("--rx", (-now.y * 5).toFixed(3) + "deg");
+        print.style.setProperty("--gx", gx.toFixed(1) + "%");
+        print.style.setProperty("--gy", gy.toFixed(1) + "%");
+        print.style.setProperty("--glow", now.glow.toFixed(3));
+        var moving = Math.abs(target.x - now.x) + Math.abs(target.y - now.y) + Math.abs(target.glow - now.glow) > 0.001;
+        if (moving) requestAnimationFrame(tick);
+        else {
+          ticking = false;
+          // back at rest: drop the 3D layer and the light so drawing stays cheap
+          if (!target.glow) print.classList.remove("lit");
+        }
+      }
+      function wake() { print.classList.add("lit"); if (!ticking) { ticking = true; requestAnimationFrame(tick); } }
+
+      print.addEventListener("pointermove", function (e) {
+        var r = print.getBoundingClientRect();
+        var px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+        target.x = px - 0.5;
+        target.y = py - 0.5;
+        target.glow = 1;
+        // the light lives on the print, so on its back left and right are swapped
+        gx = (print.classList.contains("flipped") ? 1 - px : px) * 100;
+        gy = py * 100;
+        wake();
+      });
+      print.addEventListener("pointerleave", function () {
+        target.x = target.y = target.glow = 0;
+        wake();
+      });
+    }
+
+    // ---------- the back of the print ----------
+
+    var turnTimer;
+    function fillBack() {
+      var c = current, pal = c.piece.pal;
+      document.getElementById("b-title").textContent = c.piece.title;
+      var sw = document.getElementById("b-swatches");
+      sw.textContent = "";
+      [pal.bg].concat(pal.ink).forEach(function (col) {
+        var i = document.createElement("i");
+        i.style.background = col;
+        sw.appendChild(i);
+      });
+      document.getElementById("b-drawn").textContent = c.drawn.toLocaleString(undefined, {
+        day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
+      });
+      document.getElementById("b-style").textContent = c.piece.style;
+      document.getElementById("b-marks").textContent = c.piece.marks;
+      document.getElementById("b-nonce").textContent = toHex(c.seed).match(/.{8}/g).join(" ");
+    }
+
+    // the side you tap is the side that sinks away: right edge for a tap on the right, left for the left
+    var angle = 0, lastDir = 1;
+    function turn(over, dir) {
+      dir = dir || -lastDir;
+      lastDir = dir;
+      angle += 180 * dir;
+      print.style.setProperty("--flip", angle + "deg");
+      if (over) fillBack();
+      // keep the 3D transform on while turning back, then drop it so drawing stays cheap
+      print.classList.add("turning");
+      print.classList.remove("glint-r", "glint-l");
+      void print.offsetWidth;           // restart the glare for this turn
+      print.classList.add(dir > 0 ? "glint-r" : "glint-l");
+      print.classList.toggle("flipped", over);
+      print.setAttribute("aria-pressed", over ? "true" : "false");
+      print.querySelector(".back").setAttribute("aria-hidden", over ? "false" : "true");
+      print.querySelector(".face").setAttribute("aria-hidden", over ? "true" : "false");
+      clearTimeout(turnTimer);
+      if (!over) turnTimer = setTimeout(function () { print.classList.remove("turning"); }, reduce ? 0 : 1150);
+    }
+
+    print.addEventListener("click", function (e) {
+      if (e.target.closest("#info")) return;
+      var r = print.getBoundingClientRect();
+      turn(!print.classList.contains("flipped"), e.clientX > r.left + r.width / 2 ? 1 : -1);
+    });
+    print.addEventListener("keydown", function (e) {
+      if (e.target !== print) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); turn(!print.classList.contains("flipped"), 1); }
+    });
+
+    // ---------- about ----------
+
+    var sheet = document.getElementById("sheet");
+    var card = document.getElementById("card");
+    var infoBtn = document.getElementById("info");
+
+    var dust = document.getElementById("dust");
+    var leaving = false;
+
+    function openSheet() {
+      if (leaving) return;
+      sheet.classList.remove("gone");
+      void card.offsetWidth;            // settle the closed state so the opening transition runs from it
+      sheet.classList.add("open");
+      sheet.setAttribute("aria-hidden", "false");
+      setTimeout(function () { card.focus({ preventScroll: true }); }, 50);
+    }
+
+    function closeSheet() {
+      if (!sheet.classList.contains("open") || leaving) return;
+      if (!reduce) {
+        leaving = true;
+        dissolve();                         // draws the first frame before the real card is hidden
+        sheet.classList.add("leaving");
+      }
+      sheet.classList.remove("open");
+      sheet.setAttribute("aria-hidden", "true");
+      infoBtn.focus({ preventScroll: true });
+    }
+
+    infoBtn.addEventListener("click", function (e) { e.stopPropagation(); openSheet(); });
+    sheet.addEventListener("click", closeSheet);
+    document.addEventListener("keydown", function (e) {
+      if (!sheet.classList.contains("open")) return;
+      if (e.key === "Escape" || e.key === "Enter" || e.key === " ") { e.preventDefault(); closeSheet(); }
+      if (e.key === "Tab") { e.preventDefault(); card.focus(); }
+    });
+
+    // The card comes apart like paper: an exact copy is drawn to a canvas, a ragged
+    // edge climbs from the bottom, and the pieces it frees flutter up and away.
+    function roundedRect(c, x, y, w, h, r) {
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.arcTo(x + w, y, x + w, y + h, r);
+      c.arcTo(x + w, y + h, x, y + h, r);
+      c.arcTo(x, y + h, x, y, r);
+      c.arcTo(x, y, x + w, y, r);
+      c.closePath();
+    }
+
+    // paint the card (background and every word, where it sits) onto a canvas
+    function copyCard(rect, dpr) {
+      var w = Math.ceil(rect.width), h = Math.ceil(rect.height);
+      var c = document.createElement("canvas");
+      c.width = w * dpr;
+      c.height = h * dpr;
+      var g = c.getContext("2d");
+      g.scale(dpr, dpr);
+      g.fillStyle = getComputedStyle(card).backgroundColor;
+      roundedRect(g, 0, 0, w, h, 20);
+      g.fill();
+      var walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT), node;
+      while ((node = walker.nextNode())) {
+        var st = getComputedStyle(node.parentElement);
+        g.font = st.fontWeight + " " + st.fontSize + " " + st.fontFamily;
+        g.fillStyle = st.color;
+        if ("letterSpacing" in g) g.letterSpacing = st.letterSpacing === "normal" ? "0px" : st.letterSpacing;
+        var re = /\S+/g, m;
+        while ((m = re.exec(node.textContent))) {
+          var range = document.createRange();
+          range.setStart(node, m.index);
+          range.setEnd(node, m.index + m[0].length);
+          var r = range.getBoundingClientRect();
+          var ascent = g.measureText(m[0]).fontBoundingBoxAscent || r.height * 0.8;
+          g.fillText(m[0], r.left - rect.left, r.top - rect.top + ascent);
+        }
+      }
+      return c;
+    }
+
+    function dissolve() {
+      var rect = card.getBoundingClientRect();
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var vw = window.innerWidth, vh = window.innerHeight;
+      dust.width = vw * dpr;
+      dust.height = vh * dpr;
+      var ctx = dust.getContext("2d");
+
+      var paper = copyCard(rect, dpr);
+      var w = paper.width / dpr, h = paper.height / dpr;
+      // what is still in place; each grain is cut out of it when it lets go
+      var rest = document.createElement("canvas");
+      rest.width = paper.width;
+      rest.height = paper.height;
+      var rg = rest.getContext("2d");
+      rg.drawImage(paper, 0, 0);
+
+      // Every grain starts fading the moment you tap. The bottom fades fastest and
+      // the top a little slower, as in the films.
+      var cell = 6, grains = [];
+      for (var y = 0; y < h; y += cell) {
+        for (var x = 0; x < w; x += cell) {
+          var dx = Math.max(20 - x - cell, 0, x - (w - 20));
+          var dy = Math.max(20 - y - cell, 0, y - (h - 20));
+          if (dx * dx + dy * dy > 400) continue;
+          var up = 1 - y / h;                                   // 0 at the bottom, 1 at the top
+          grains.push({
+            sx: x, sy: y,
+            x: rect.left + x, y: rect.top + y,
+            delay: Math.random() * 40,
+            life: 600 + up * 400 + Math.random() * 250,
+            vx: 8 + Math.random() * 26,                            // a light breeze to the right
+            vy: -(10 + Math.random() * 24),
+            sway: 6 + Math.random() * 10,
+            ph: Math.random() * 6.28,
+            born: -1
+          });
+        }
+      }
+
+      var t0 = performance.now(), last = t0;
+      function frame(now) {
+        var dt = Math.min(50, now - last) / 1000;
+        last = now;
+        var t = now - t0, alive = 0;
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, vw, vh);
+        ctx.globalAlpha = 1;
+        ctx.drawImage(rest, rect.left, rect.top, w, h);       // grains that have not moved yet
+
+        for (var i = 0; i < grains.length; i++) {
+          var p = grains[i];
+          if (p.born < 0) {
+            if (t < p.delay) { alive++; continue; }
+            p.born = t;
+            rg.clearRect(p.sx * dpr, p.sy * dpr, cell * dpr, cell * dpr);
+          }
+          var age = t - p.born, k = age / p.life;
+          if (k >= 1) continue;
+          alive++;
+          p.vy -= 16 * dt;
+          p.x += (p.vx + Math.sin(age * 0.004 + p.ph) * p.sway) * dt;
+          p.y += p.vy * dt;
+          var size = cell * (1 - 0.5 * k);
+          ctx.globalAlpha = 1 - k;
+          ctx.drawImage(paper, p.sx * dpr, p.sy * dpr, cell * dpr, cell * dpr, p.x, p.y, size, size);
+        }
+
+        if (alive && t < 1600) requestAnimationFrame(frame);
+        else {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, dust.width, dust.height);
+          sheet.classList.add("gone");
+          sheet.classList.remove("leaving");
+          leaving = false;
+        }
+      }
+      frame(t0);                     // first frame now, so the swap from card to copy is seamless
+    }
+
+    show();
+  })();
+  </script>
+</body>
+</html>
